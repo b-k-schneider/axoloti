@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013, 2014, 2015 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -188,12 +188,15 @@ public class AxoObjects {
             if (fileEntry.isDirectory()) {
                 String dirname = fileEntry.getName();
                 AxoObjectTreeNode s = LoadAxoObjectsFromFolder(fileEntry, prefix + "/" + dirname);
-                t.SubNodes.put(dirname, s);
-                for (AxoObjectAbstract o : t.Objects) {
-                    int i = o.id.lastIndexOf('/');
-                    if (i > 0) {
-                        if (o.id.substring(i + 1).equals(dirname)) {
-                            s.Objects.add(o);
+                if(s.Objects.size()>0 || s.SubNodes.size()>0)
+                {
+                    t.SubNodes.put(dirname, s);
+                    for (AxoObjectAbstract o : t.Objects) {
+                        int i = o.id.lastIndexOf('/');
+                        if (i > 0) {
+                            if (o.id.substring(i + 1).equals(dirname)) {
+                                s.Objects.add(o);
+                            }
                         }
                     }
                 }
@@ -240,24 +243,37 @@ public class AxoObjects {
         File folder = new File(path);
         if (folder.isDirectory()) {
             AxoObjectTreeNode t = LoadAxoObjectsFromFolder(folder, "");
-            ObjectTree.SubNodes.put(folder.getName(), t);
+            if(t.Objects.size()>0 || t.SubNodes.size()>0)
+            {
+                ObjectTree.SubNodes.put(folder.getName(), t);
+            }
         }
     }
 
+    public Thread LoaderThread;
+
     public void LoadAxoObjects() {
-        ObjectTree = new AxoObjectTreeNode("/");
-        ObjectList = new ArrayList<AxoObjectAbstract>();
-        ObjectHashMap = new HashMap<String, AxoObjectAbstract>();
-        String spath[] = MainFrame.prefs.getObjectSearchPath();
-        if (spath != null) {
-            for (String path : spath) {
-                Logger.getLogger(AxoObjects.class.getName()).log(Level.INFO, "search path : " + path);
-                LoadAxoObjects(path);
+        Runnable objloader = new Runnable() {
+            @Override
+            public void run() {
+                ObjectTree = new AxoObjectTreeNode("/");
+                ObjectList = new ArrayList<AxoObjectAbstract>();
+                ObjectHashMap = new HashMap<String, AxoObjectAbstract>();
+                String spath[] = MainFrame.prefs.getObjectSearchPath();
+                if (spath != null) {
+                    for (String path : spath) {
+                        Logger.getLogger(AxoObjects.class.getName()).log(Level.INFO, "search path : " + path);
+                        LoadAxoObjects(path);
+                    }
+                } else {
+                    Logger.getLogger(AxoObjects.class.getName()).log(Level.SEVERE, "search path empty!");
+                }
+                transitionmgr = new TransitionManager();
+                transitionmgr.LoadTransitions();
+                Logger.getLogger(AxoObjects.class.getName()).log(Level.INFO, "finished loading objects");
             }
-        } else {
-            Logger.getLogger(AxoObjects.class.getName()).log(Level.SEVERE, "search path empty!");
-        }
-        transitionmgr = new TransitionManager();
-        transitionmgr.LoadTransitions();
+        };
+        Thread LoaderThread = new Thread(objloader);
+        LoaderThread.start();
     }
 }

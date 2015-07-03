@@ -31,11 +31,11 @@ public class Outlet {
     @Attribute
     public String name;
     @Attribute(required = false)
-    String description;
-    @Attribute(required = false)
-    boolean SumBuffer = false;
+    public String description;
+    @Deprecated @Attribute(required = false)
+    Boolean SumBuffer;
 
-    DataType getDatatype() {
+    public DataType getDatatype() {
         return null;
     }
 

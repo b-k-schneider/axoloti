@@ -35,6 +35,7 @@ public class GeneratedObjects extends gentools {
     static public void WriteAxoObjects() {
 
         Arithmetic.GenerateAll();
+        Constant.GenerateAll();
         Control.GenerateAll();
         Convert.GenerateAll();
         Delay.GenerateAll();
@@ -66,6 +67,7 @@ public class GeneratedObjects extends gentools {
         brainwave.GenerateAll();
         LTC.GenerateAll();
         Spat.GenerateAll();
+        USB.GenerateAll();
 
         {
             ArrayList<AxoObjectAbstract> c = new ArrayList<AxoObjectAbstract>();

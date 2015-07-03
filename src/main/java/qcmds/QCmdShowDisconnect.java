@@ -17,6 +17,8 @@
  */
 package qcmds;
 
+import axoloti.MainFrame;
+
 /**
  *
  * @author Johannes Taelman
@@ -25,16 +27,15 @@ public class QCmdShowDisconnect implements QCmdGUITask {
 
     @Override
     public String GetStartMessage() {
-        return "Start show disconnect";
+        return null;
     }
 
     @Override
     public String GetDoneMessage() {
-        return "Done show connect";
+        return null;
     }
 
-    @Override
     public void DoGUI(QCmdProcessor processor) {
-        processor.mainframe.ShowDisconnect();
+        MainFrame.mainframe.ShowDisconnect();
     }
 }

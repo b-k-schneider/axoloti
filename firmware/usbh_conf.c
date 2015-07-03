@@ -42,6 +42,18 @@ HCD_HandleTypeDef hHCD;
 #include "usbh_midi_core.h"
 #include "ch.h"
 
+
+#include "midi.h"
+
+//extern void MidiInMsgHandler(uint8_t status, uint8_t data1, uint8_t data2);
+
+//TODO: need incoming port number
+void MIDI_CB(uint8_t a,uint8_t b,uint8_t c,uint8_t d){
+    USBH_DbgLog("M %x - %x %x %x\r\n",a,b,c,d);
+    //  a= pkt header 0xF0 = cable number 0x0F=CIN
+    MidiInMsgHandler(MIDI_DEVICE_USB_HOST, ((a & 0xF0) >> 4)+ 1 ,b,c,d);
+}
+
 USBH_HandleTypeDef hUSBHost; /* USB Host handle */
 static void USBH_UserProcess(USBH_HandleTypeDef *pHost, uint8_t vId);
 
@@ -56,6 +68,15 @@ static void USBH_UserProcess(USBH_HandleTypeDef *pHost, uint8_t vId);
 void HAL_HCD_MspInit(HCD_HandleTypeDef *hHCD) {
   /* Note: On STM32F4-Discovery board only USB OTG FS core is supported. */
   GPIO_InitTypeDef GPIO_InitStruct;
+#if (DEBUG_ON_GPIO)
+  // for debug
+  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+  GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Alternate = 0;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+#endif
 
   if (hHCD->Instance == USB_OTG_FS) {
     /* Configure USB FS GPIOs */
@@ -117,7 +138,7 @@ void HAL_HCD_MspInit(HCD_HandleTypeDef *hHCD) {
     GPIO_InitStruct.Pin = GPIO_PIN_12;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FAST;
     GPIO_InitStruct.Alternate = GPIO_AF12_OTG_HS_FS;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
@@ -130,10 +151,6 @@ void HAL_HCD_MspInit(HCD_HandleTypeDef *hHCD) {
     /* Enable USBHS Interrupt */
     HAL_NVIC_EnableIRQ(OTG_HS_IRQn);
   }
-  ToggleGreen();
-  ToggleRed();
-  ToggleOrange();
-  ToggleBlue();
 }
 
 /**
@@ -190,6 +207,7 @@ void HAL_HCD_Disconnect_Callback(HCD_HandleTypeDef *hHCD) {
 void HAL_HCD_HC_NotifyURBChange_Callback(HCD_HandleTypeDef *hHCD, uint8_t chnum,
                                          HCD_URBStateTypeDef urb_state) {
   /* To be used with OS to sync URB state with the global state machine */
+  USBH_LL_NotifyURBChange(hHCD->pData);
 }
 
 /*******************************************************************************
@@ -486,9 +504,8 @@ uint8_t USBH_LL_GetToggle(USBH_HandleTypeDef *phost, uint8_t pipe) {
  */
 void USBH_Delay(uint32_t Delay) {
   HAL_Delay(Delay);
+  __NOP();
 }
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
 
 /**
  * @brief  User Process
@@ -521,79 +538,51 @@ void MY_USBH_Init(void) {
   USBH_Init(&hUSBHost, USBH_UserProcess, 0);
 
   /* Add Supported Class */
-//  USBH_RegisterClass(&hUSBHost, USBH_HID_CLASS);
-
+  USBH_RegisterClass(&hUSBHost, USBH_HID_CLASS);
   USBH_RegisterClass(&hUSBHost, USBH_MIDI_CLASS);
 
   /* Start Host Process */
   USBH_Start(&hUSBHost);
 
-//  USBH_ReEnumerate(&hUSBHost);
-
-  int i = 0;
-
-  /* Run Application (Blocking mode) */
-  while (1) {
-    i++;
-    /*
-     if (i==10000) {
-     chprintf(&SD2,"*");
-     USBH_ReEnumerate(&hUSBHost);
-     i = 0;
-     }*/
-    /* USB Host Background task */
-    USBH_Process(&hUSBHost);
-
-    /* HID Menu Process */
-//    HID_MenuProcess();
-    /*
-     if (i % 100 == 0) {
-     chprintf(&SD2, ".");
-     }
-     */
-//    USBH_HID_EventCallback(&hUSBHost);
-    chThdSleepMilliseconds(1);
-  }
-
 }
+
+int8_t hid_buttons[8];
+int8_t hid_mouse_x;
+int8_t hid_mouse_y;
 
 void USBH_HID_EventCallback(USBH_HandleTypeDef *phost) {
   if (USBH_HID_GetDeviceType(&hUSBHost) == HID_MOUSE) {
     HID_MOUSE_Info_TypeDef *m_pinfo_mouse;
     m_pinfo_mouse = USBH_HID_GetMouseInfo(phost);
     if (m_pinfo_mouse) {
-      if (m_pinfo_mouse->buttons[0]) {
-        chprintf(&SD2, "a%u", m_pinfo_mouse->buttons[0]);
-      }
-      if (m_pinfo_mouse->buttons[1]) {
-        chprintf(&SD2, "b%u", m_pinfo_mouse->buttons[1]);
-      }
-      if (m_pinfo_mouse->buttons[2]) {
-        chprintf(&SD2, "c%u", m_pinfo_mouse->buttons[2]);
-      }
+//      USBH_DbgLog("btns:%u%u%u", m_pinfo_mouse->buttons[0],m_pinfo_mouse->buttons[1],m_pinfo_mouse->buttons[2]);
+      hid_buttons[0] = m_pinfo_mouse->buttons[0];
+      hid_buttons[1] = m_pinfo_mouse->buttons[1];
+      hid_buttons[2] = m_pinfo_mouse->buttons[2];
+      hid_mouse_x += m_pinfo_mouse->x;
+      hid_mouse_y += m_pinfo_mouse->y;
+    } else {
+      hid_buttons[0] = 0;
+      hid_buttons[1] = 0;
+      hid_buttons[2] = 0;
     }
+    USBH_DbgLog("btns:%u%u%u", hid_buttons[0],hid_buttons[1],hid_buttons[2]);
   }
   else if (USBH_HID_GetDeviceType(&hUSBHost) == HID_KEYBOARD) {
     HID_KEYBD_Info_TypeDef *m_pinfo_keyb;
     m_pinfo_keyb = USBH_HID_GetKeybdInfo(phost);
     if (m_pinfo_keyb) {
       if (m_pinfo_keyb->lshift) {
-        chSequentialStreamWrite((BaseSequentialStream *)&SD2,
-                                (const unsigned char*)"ls", 2);
+        USBH_DbgLog("ls");
 
       }
       if (m_pinfo_keyb->rshift) {
-        chSequentialStreamWrite((BaseSequentialStream *)&SD2,
-                                (const unsigned char*)"rs", 2);
+        USBH_DbgLog("rs");
       }
     }
   }
 }
 
-void MIDI_CB(uint8_t a,uint8_t b,uint8_t c,uint8_t d){
-  //chprintf(&SD2,"M %x %x %x %x\n",a,b,c,d);
-  MidiInMsgHandler(b,c,d);
-}
 
 #define PORT_IRQ_HANDLER(id) void id(void)
 #define CH_IRQ_HANDLER(id) PORT_IRQ_HANDLER(id)
@@ -613,22 +602,19 @@ void* fakemalloc(size_t size){
 }
 
 void fakefree(void * p){
+  (void)p;
   memused = 0;
 }
-
-
-/*
- CH_IRQ_HANDLER(Vector14C) {
- CH_IRQ_PROLOGUE();
- HAL_HCD_IRQHandler(&hHCD);
- CH_IRQ_EPILOGUE();
- }
-*/
 
 //STM32_OTG2_HANDLER
 CH_IRQ_HANDLER(Vector174) {
   CH_IRQ_PROLOGUE();
+  chSysLockFromIsr();
   HAL_HCD_IRQHandler(&hHCD);
+  chSysUnlockFromIsr();
+#if (DEBUG_ON_GPIO)
+  HAL_GPIO_WritePin( GPIOA, GPIO_PIN_0 | GPIO_PIN_1, GPIO_PIN_RESET);
+#endif
   CH_IRQ_EPILOGUE();
 }
 
@@ -645,27 +631,5 @@ CH_IRQ_HANDLER(Vector168) {
 
 CH_IRQ_HANDLER(Vector16C) {
   while (1) {
-  }
-}
-
-void NMIVector(void) {
-  while (1) {
-  }
-}
-void HardFaultVector(void) {
-  while (1) {
-  }
-}
-void MemManageVector(void) {
-  while (1) {
-  }
-}
-void BusFaultVector(void) {
-  while (1) {
-  }
-}
-void UsageFaultVector(void) {
-  while (1) {
-
   }
 }

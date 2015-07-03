@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013, 2014, 2015 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -23,7 +23,18 @@
 #include "stm32f4xx.h"
 #include "axoloti_board.h"
 
+#define CODEC_ADAU1961_I2S_ENABLE rccEnableSPI2(FALSE)
+#define CODEC_ADAU1961_I2S_DISABLE rccDisableSPI2(FALSE)
+#define CODEC_ADAU1961_I2S SPI2
+#define CODEC_ADAU1961_I2Sext I2S2ext
+
 //#define STM_IS_I2S_MASTER true
+
+#if (BOARD_AXOLOTI_V05)
+#error "BOARD revision V05 uses SAI, please update the makefile to compile codec_ADAU1961_SAI.c"
+#elif (BOARD_STM32F4DISCOVERY)
+#error "STM32F4DISCOVERY has a different codec, please update the makefile..."
+#endif
 
 extern void computebufI(int32_t *inp, int32_t *outp);
 
@@ -42,7 +53,7 @@ STM32_DMA_GETCHANNEL(STM32_DMA_STREAM_ID(1, 3), \
 
 static const SPIConfig spi1c_cfg = {NULL, /* HW dependent part.*/GPIOE, 8,
                                     SPI_CR1_BR_0 | SPI_CR1_BR_1 | SPI_CR1_BR_2
-                                        | SPI_CR1_CPOL | SPI_CR1_CPHA };
+                                        | SPI_CR1_CPOL | SPI_CR1_CPHA};
 
 void codec_ADAU1961_hw_reset(void) {
 }
@@ -66,8 +77,8 @@ void CheckI2CErrors(void) {
 }
 
 void ADAU1961_I2CStart(void) {
-  palSetPadMode(GPIOB, 10, PAL_MODE_ALTERNATE(4)| PAL_STM32_OTYPE_OPENDRAIN);
-  palSetPadMode(GPIOB, 11, PAL_MODE_ALTERNATE(4)| PAL_STM32_OTYPE_OPENDRAIN);
+  palSetPadMode(GPIOB, 10, PAL_MODE_ALTERNATE(4) | PAL_STM32_OTYPE_OPENDRAIN);
+  palSetPadMode(GPIOB, 11, PAL_MODE_ALTERNATE(4) | PAL_STM32_OTYPE_OPENDRAIN);
   chMtxLock(&Mutex_DMAStream_1_7);
   i2cStart(&I2CD2, &i2cfg2);
 }
@@ -155,7 +166,7 @@ void ADAU1961_WriteRegister6(uint16_t RegisterAddr, uint8_t * RegisterValues) {
   ADAU1961_I2CStart();
   i2cAcquireBus(&I2CD2);
   status = i2cMasterTransmitTimeout(&I2CD2, ADAU1961_I2C_ADDR, i2ctxbuf, 8,
-                                    i2crxbuf, 0, TIME_INFINITE );
+                                    i2crxbuf, 0, TIME_INFINITE);
   i2cReleaseBus(&I2CD2);
   ADAU1961_I2CStop();
   if (status != RDY_OK) {
@@ -401,7 +412,7 @@ static void dma_i2s_interrupt(void* dat, uint32_t flags) {
   (void)dat;
   (void)flags;
   codec_interrupt_timestamp = hal_lld_get_counter_value();
-  if ((i2sdma_ADAU1961)->stream->CR & STM32_DMA_CR_CT ) {
+  if ((i2sdma_ADAU1961)->stream->CR & STM32_DMA_CR_CT) {
     computebufI(rbuf, buf);
   }
   else {
@@ -420,69 +431,60 @@ static void codec_ADAU1961_dma_init(void) {
   // TX
   i2sdma_ADAU1961 = STM32_DMA_STREAM(STM32_SPI_SPI2_TX_DMA_STREAM);
 
-  uint32_t i2stxdmamode = STM32_DMA_CR_CHSEL(I2S2_TX_DMA_CHANNEL) |
-  STM32_DMA_CR_PL(STM32_SPI_SPI2_DMA_PRIORITY) |
-  STM32_DMA_CR_DIR_M2P |
-  STM32_DMA_CR_TEIE |
-  STM32_DMA_CR_TCIE |
-  STM32_DMA_CR_DBM | // double buffer mode
+  uint32_t i2stxdmamode = STM32_DMA_CR_CHSEL(I2S2_TX_DMA_CHANNEL)
+      | STM32_DMA_CR_PL(STM32_SPI_SPI2_DMA_PRIORITY) | STM32_DMA_CR_DIR_M2P
+      | STM32_DMA_CR_TEIE | STM32_DMA_CR_TCIE | STM32_DMA_CR_DBM | // double buffer mode
       STM32_DMA_CR_PSIZE_HWORD | STM32_DMA_CR_MSIZE_WORD;
 
-      bool_t b = dmaStreamAllocate(i2sdma_ADAU1961,
-          STM32_SPI_SPI2_IRQ_PRIORITY,
-          (stm32_dmaisr_t)dma_i2s_interrupt,
-          (void *)&SPID2);
+  bool_t b = dmaStreamAllocate(i2sdma_ADAU1961, STM32_SPI_SPI2_IRQ_PRIORITY,
+                               (stm32_dmaisr_t)dma_i2s_interrupt,
+                               (void *)&SPID2);
 
 //  if (!b)
 //  chprintf((BaseChannel*)&SD2, "DMA Allocated Successfully to I2S2\r\n");
 
-      dmaStreamSetPeripheral(i2sdma_ADAU1961, &(CODEC_ADAU1961_I2S->DR));
+  dmaStreamSetPeripheral(i2sdma_ADAU1961, &(CODEC_ADAU1961_I2S->DR));
 // my double buffer test
-      dmaStreamSetMemory0(i2sdma_ADAU1961, buf);
-      dmaStreamSetMemory1(i2sdma_ADAU1961, buf2);
-      dmaStreamSetTransactionSize(i2sdma_ADAU1961, 64);
-      dmaStreamSetMode(i2sdma_ADAU1961, i2stxdmamode | STM32_DMA_CR_MINC);
+  dmaStreamSetMemory0(i2sdma_ADAU1961, buf);
+  dmaStreamSetMemory1(i2sdma_ADAU1961, buf2);
+  dmaStreamSetTransactionSize(i2sdma_ADAU1961, 64);
+  dmaStreamSetMode(i2sdma_ADAU1961, i2stxdmamode | STM32_DMA_CR_MINC);
 //  dmaStreamSetFIFO(i2sdma,
 
-      // RX
+  // RX
 #if 1
-      i2sdma_ADAU1961rx = STM32_DMA_STREAM(STM32_SPI_SPI2_RX_DMA_STREAM);
+  i2sdma_ADAU1961rx = STM32_DMA_STREAM(STM32_SPI_SPI2_RX_DMA_STREAM);
 
-      uint32_t i2srxdmamode = STM32_DMA_CR_CHSEL(3/*I2S2_RX_DMA_CHANNEL*/) |
-      STM32_DMA_CR_PL(STM32_SPI_SPI2_DMA_PRIORITY) |
-      STM32_DMA_CR_DIR_P2M |
+  uint32_t i2srxdmamode = STM32_DMA_CR_CHSEL(3/*I2S2_RX_DMA_CHANNEL*/)
+      | STM32_DMA_CR_PL(STM32_SPI_SPI2_DMA_PRIORITY) | STM32_DMA_CR_DIR_P2M |
 //  STM32_DMA_CR_DMEIE |
-      STM32_DMA_CR_TEIE |
-      STM32_DMA_CR_TCIE |
-      STM32_DMA_CR_DBM |// double buffer mode
+      STM32_DMA_CR_TEIE | STM32_DMA_CR_TCIE | STM32_DMA_CR_DBM | // double buffer mode
       STM32_DMA_CR_PSIZE_HWORD | STM32_DMA_CR_MSIZE_WORD;
 
-      b = dmaStreamAllocate(i2sdma_ADAU1961rx,
-          STM32_SPI_SPI2_IRQ_PRIORITY,
-          (stm32_dmaisr_t)dma_i2s_rxinterrupt,
-          (void *)&SPID2);
+  b = dmaStreamAllocate(i2sdma_ADAU1961rx, STM32_SPI_SPI2_IRQ_PRIORITY,
+                        (stm32_dmaisr_t)dma_i2s_rxinterrupt, (void *)&SPID2);
 
-      while(b) {
-        // failed
-      }
+  while (b) {
+    // failed
+  }
 //  if (!b)
 //  chprintf((BaseChannel*)&SD2, "DMA Allocated Successfully to I2S2\r\n");
 
 //  dmaStreamSetPeripheral(i2sdma_ADAU1961rx, &(CODEC_ADAU1961_I2Sext->DR));
-      dmaStreamSetPeripheral(i2sdma_ADAU1961rx, &(CODEC_ADAU1961_I2Sext->DR));
+  dmaStreamSetPeripheral(i2sdma_ADAU1961rx, &(CODEC_ADAU1961_I2Sext->DR));
 // my double buffer test
-      dmaStreamSetMemory0(i2sdma_ADAU1961rx, rbuf2);
-      dmaStreamSetMemory1(i2sdma_ADAU1961rx, rbuf);
-      dmaStreamSetTransactionSize(i2sdma_ADAU1961rx, 64);//PLAYBACK_BUFFER_SIZE);
-      dmaStreamSetMode(i2sdma_ADAU1961rx, i2srxdmamode | STM32_DMA_CR_MINC);
+  dmaStreamSetMemory0(i2sdma_ADAU1961rx, rbuf2);
+  dmaStreamSetMemory1(i2sdma_ADAU1961rx, rbuf);
+  dmaStreamSetTransactionSize(i2sdma_ADAU1961rx, 64); //PLAYBACK_BUFFER_SIZE);
+  dmaStreamSetMode(i2sdma_ADAU1961rx, i2srxdmamode | STM32_DMA_CR_MINC);
 
-      dmaStreamClearInterrupt(i2sdma_ADAU1961rx);
-      dmaStreamEnable(i2sdma_ADAU1961rx);
+  dmaStreamClearInterrupt(i2sdma_ADAU1961rx);
+  dmaStreamEnable(i2sdma_ADAU1961rx);
 #endif
-      // enable
-      dmaStreamClearInterrupt(i2sdma_ADAU1961);
-      dmaStreamEnable(i2sdma_ADAU1961);
-    }
+  // enable
+  dmaStreamClearInterrupt(i2sdma_ADAU1961);
+  dmaStreamEnable(i2sdma_ADAU1961);
+}
 
 void codec_ADAU1961_i2s_init(uint16_t sampleRate) {
 
@@ -524,7 +526,7 @@ void codec_ADAU1961_i2s_init(uint16_t sampleRate) {
   palSetPadMode(GPIOB, 15, PAL_MODE_ALTERNATE(5));
   // i2s2_sd
 #else // test if codec is connected
-  palSetPadMode(GPIOB, 12, PAL_MODE_INPUT);// i2s2ws
+  palSetPadMode(GPIOB, 12, PAL_MODE_INPUT); // i2s2ws
   palSetPadMode(GPIOB, 13, PAL_MODE_INPUT);// i2s2ck
   palSetPadMode(GPIOB, 14, PAL_MODE_INPUT);// i2s2_ext_sd
   palSetPadMode(GPIOB, 15, PAL_MODE_INPUT);// i2s2_sd
@@ -534,8 +536,7 @@ void codec_ADAU1961_i2s_init(uint16_t sampleRate) {
   // i2s2_mck
 
 // SPI2 in I2S Mode, Master
-  CODEC_ADAU1961_I2S_ENABLE
-  ;
+  CODEC_ADAU1961_I2S_ENABLE;
 
 #if STM_IS_I2S_MASTER
   CODEC_ADAU1961_I2S ->I2SCFGR = SPI_I2SCFGR_I2SMOD | SPI_I2SCFGR_I2SCFG_1 | SPI_I2SCFGR_DATLEN_1; /* MASTER TRANSMIT */
@@ -558,7 +559,7 @@ void codec_ADAU1961_i2s_init(uint16_t sampleRate) {
   CODEC_ADAU1961_I2Sext ->I2SPR = 0x0002;
 
 #else
-  CODEC_ADAU1961_I2S ->I2SCFGR = SPI_I2SCFGR_I2SMOD | SPI_I2SCFGR_DATLEN_1; /* SLAVE TRANSMIT, 32bit */
+  CODEC_ADAU1961_I2S->I2SCFGR = SPI_I2SCFGR_I2SMOD | SPI_I2SCFGR_DATLEN_1; /* SLAVE TRANSMIT, 32bit */
 
   // generate 8MHz clock on MCK pin with PWM...
   static const PWMConfig pwmcfg = {168000000, /* 400kHz PWM clock frequency.  */
@@ -575,9 +576,9 @@ void codec_ADAU1961_i2s_init(uint16_t sampleRate) {
   pwmStart(&PWMD8, &pwmcfg);
   pwmEnableChannel(&PWMD8, 0, 10);
 
-  CODEC_ADAU1961_I2Sext ->I2SCFGR = SPI_I2SCFGR_I2SMOD | SPI_I2SCFGR_I2SCFG_0
+  CODEC_ADAU1961_I2Sext->I2SCFGR = SPI_I2SCFGR_I2SMOD | SPI_I2SCFGR_I2SCFG_0
       | SPI_I2SCFGR_DATLEN_1; /* SLAVE RECEIVE, 32bit*/
-  CODEC_ADAU1961_I2Sext ->I2SPR = 0x0002;
+  CODEC_ADAU1961_I2Sext->I2SPR = 0x0002;
 
 #endif
 //  CODEC_ADAU1961_I2S ->I2SPR = SPI_I2SPR_MCKOE |
@@ -589,22 +590,22 @@ void codec_ADAU1961_i2s_init(uint16_t sampleRate) {
   codec_ADAU1961_dma_init();
 
 // Enable I2S DMA Request
-  CODEC_ADAU1961_I2S ->CR2 = SPI_CR2_TXDMAEN;  //|SPI_CR2_RXDMAEN;
+  CODEC_ADAU1961_I2S->CR2 = SPI_CR2_TXDMAEN;  //|SPI_CR2_RXDMAEN;
 //  CODEC_ADAU1961_I2S ->CR2 = SPI_CR2_RXNEIE;
 //  CODEC_ADAU1961_I2S ->CR2 = SPI_CR2_TXEIE;
 
-  CODEC_ADAU1961_I2Sext ->CR2 = SPI_CR2_RXDMAEN;
+  CODEC_ADAU1961_I2Sext->CR2 = SPI_CR2_RXDMAEN;
 //  CODEC_ADAU1961_I2S ->CR2 = SPI_CR2_TXDMAEN;
 
 // Now Enable I2S
-  CODEC_ADAU1961_I2S ->I2SCFGR |= SPI_I2SCFGR_I2SE;
-  CODEC_ADAU1961_I2Sext ->I2SCFGR |= SPI_I2SCFGR_I2SE;
+  CODEC_ADAU1961_I2S->I2SCFGR |= SPI_I2SCFGR_I2SE;
+  CODEC_ADAU1961_I2Sext->I2SCFGR |= SPI_I2SCFGR_I2SE;
 }
 
 void codec_ADAU1961_Stop(void) {
-  CODEC_ADAU1961_I2S ->I2SCFGR = 0;
-  CODEC_ADAU1961_I2Sext ->I2SCFGR = 0;
-  CODEC_ADAU1961_I2S ->CR2 = 0;
-  CODEC_ADAU1961_I2Sext ->CR2 = 0;
+  CODEC_ADAU1961_I2S->I2SCFGR = 0;
+  CODEC_ADAU1961_I2Sext->I2SCFGR = 0;
+  CODEC_ADAU1961_I2S->CR2 = 0;
+  CODEC_ADAU1961_I2Sext->CR2 = 0;
 
 }

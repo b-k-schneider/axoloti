@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013, 2014, 2015 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -23,6 +23,8 @@ import axoloti.dialogs.FileManagerFrame;
 import axoloti.dialogs.KeyboardFrame;
 import axoloti.dialogs.PreferencesFrame;
 import axoloti.object.AxoObjects;
+import axoloti.usb.Usb;
+import axoloti.utils.Constants;
 import axoloti.utils.FirmwareID;
 import axoloti.utils.Preferences;
 import generatedobjects.GeneratedObjects;
@@ -31,6 +33,8 @@ import java.awt.Cursor;
 import java.awt.Desktop;
 import java.awt.Point;
 import java.awt.Toolkit;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -43,6 +47,8 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileFilter;
@@ -51,18 +57,19 @@ import javax.swing.text.Style;
 import javax.swing.text.StyleConstants;
 import org.simpleframework.xml.Serializer;
 import org.simpleframework.xml.core.Persister;
+import qcmds.QCmdBringToDFUMode;
 import qcmds.QCmdPing;
 import qcmds.QCmdProcessor;
 import qcmds.QCmdStart;
 import qcmds.QCmdStop;
-import qcmds.QCmdUploadFile;
+import qcmds.QCmdUploadFWSDRam;
 import qcmds.QCmdUploadPatch;
 
 /**
  *
  * @author Johannes Taelman
  */
-public class MainFrame extends javax.swing.JFrame {
+public class MainFrame extends javax.swing.JFrame implements ActionListener {
 
     static public Preferences prefs = Preferences.LoadPreferences();
     static public AxoObjects axoObjects;
@@ -77,6 +84,7 @@ public class MainFrame extends javax.swing.JFrame {
     QCmdProcessor qcmdprocessor;
     Thread qcmdprocessorThread;
     static public Cursor transparentCursor;
+    AxolotiMidiInput midiInput;
 
     /**
      * Creates new form MainFrame
@@ -86,11 +94,6 @@ public class MainFrame extends javax.swing.JFrame {
         setIconImage(new ImageIcon(getClass().getResource("/resources/axoloti_icon.png")).getImage());
 
         transparentCursor = getToolkit().createCustomCursor(new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB), new Point(), null);
-
-        axoObjects = new AxoObjects();
-        axoObjects.LoadAxoObjects();
-        //TransitionManager m = new TransitionManager();
-        //m.CreateTransitions();
 
         mainframe = this;
 
@@ -130,12 +133,7 @@ public class MainFrame extends javax.swing.JFrame {
                         Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
                     }
                     jTextPaneLog.setCaretPosition(jTextPaneLog.getText().length());
-//                    jTextPaneLog.invalidate();
                     jTextPaneLog.validate();
-//                    jScrollPaneLog.do();
-                    //revalidate();
-//                    jScrollPaneLog.getVerticalScrollBar().doLayout();
-//                    jScrollPaneLog.getVerticalScrollBar().setValue(jScrollPaneLog.getVerticalScrollBar().getMaximum());
                 }
             }
 
@@ -171,6 +169,53 @@ public class MainFrame extends javax.swing.JFrame {
         if (!prefs.getExpertMode()) {
             jMenuRegenerateObjects.setVisible(false);
             jMenuAutoTest.setVisible(false);
+            jMenuItemRefreshFWID.setVisible(false);
+        }
+        PopulateExamplesMenu(jMenuOpenExample);
+
+        axoObjects = new AxoObjects();
+        axoObjects.LoadAxoObjects();
+        midiInput = new AxolotiMidiInput();
+        initMidiInput(prefs.getMidiInputDevice());
+
+        ShowDisconnect();
+    }
+
+    void PopulateExamplesMenu(JMenu parent) {
+        JMenu ptut = new JMenu("tutorials");
+        PopulateExamplesMenu(ptut, "patches/tutorials");
+        parent.add(ptut);
+        JMenu pdemos = new JMenu("demos");
+        PopulateExamplesMenu(pdemos, "patches/demos");
+        parent.add(pdemos);
+        JMenu ptests = new JMenu("tests");
+        PopulateExamplesMenu(ptests, "patches/tests");
+        parent.add(ptests);
+    }
+
+    void PopulateExamplesMenu(JMenu parent, String path) {
+        File dir = new File(path);
+        for (File subdir : dir.listFiles(new java.io.FileFilter() {
+            @Override
+            public boolean accept(File pathname) {
+                return pathname.isDirectory();
+            }
+        })) {
+            JMenu fm = new JMenu(subdir.getName());
+            PopulateExamplesMenu(fm, subdir.getPath());
+            parent.add(fm);
+        }
+        for (String fn : dir.list(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                return (name.endsWith(".axp"));
+            }
+        })) {
+            String fn2 = fn.substring(0, fn.length() - 4);
+            JMenuItem fm = new JMenuItem(fn2);
+            fm.setActionCommand("open:" + path + File.separator + fn);
+            fm.addActionListener(this);
+            parent.add(fm);
         }
     }
 
@@ -183,9 +228,6 @@ public class MainFrame extends javax.swing.JFrame {
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 
-        jLabel1 = new javax.swing.JLabel();
-        jMenuItem1 = new javax.swing.JMenuItem();
-        jMenuItem2 = new javax.swing.JMenuItem();
         jButtonClear = new javax.swing.JButton();
         jScrollPaneLog = new javax.swing.JScrollPane();
         jTextPaneLog = new javax.swing.JTextPane();
@@ -202,6 +244,8 @@ public class MainFrame extends javax.swing.JFrame {
         jMenuFile = new javax.swing.JMenu();
         jMenuNew = new javax.swing.JMenuItem();
         jMenuOpen = new javax.swing.JMenuItem();
+        jMenuOpenExample = new javax.swing.JMenu();
+        recentFileMenu1 = new axoloti.menus.RecentFileMenu();
         jSeparator2 = new javax.swing.JPopupMenu.Separator();
         jMenuReloadObjects = new javax.swing.JMenuItem();
         jMenuRegenerateObjects = new javax.swing.JMenuItem();
@@ -213,26 +257,22 @@ public class MainFrame extends javax.swing.JFrame {
         jMenuEdit = new javax.swing.JMenu();
         jMenuItemCopy = new javax.swing.JMenuItem();
         jMenuBoard = new javax.swing.JMenu();
-        jMenuSelectCom = new javax.swing.JMenuItem();
+        jMenuItemSelectCom = new javax.swing.JMenuItem();
         jMenuItemFConnect = new javax.swing.JMenuItem();
         jMenuItemFDisconnect = new javax.swing.JMenuItem();
         jMenuItemPing = new javax.swing.JMenuItem();
         jMenuItemPanic = new javax.swing.JMenuItem();
         jMenuFirmware = new javax.swing.JMenu();
         jMenuItemFCompile = new javax.swing.JMenuItem();
-        jMenuItemFlashSDC = new javax.swing.JMenuItem();
+        jMenuItemFlashSDR = new javax.swing.JMenuItem();
+        jMenuItemEnterDFU = new javax.swing.JMenuItem();
         jMenuItemFlashDFU = new javax.swing.JMenuItem();
-        jMenuItemFlashSTLINK = new javax.swing.JMenuItem();
+        jMenuItemRefreshFWID = new javax.swing.JMenuItem();
+        jMenuItemListUSB = new javax.swing.JMenuItem();
         jMenuWindow = new javax.swing.JMenu();
         jMenuHelp = new javax.swing.JMenu();
         jMenuHelpContents = new javax.swing.JMenuItem();
         jMenuAbout = new javax.swing.JMenuItem();
-
-        jLabel1.setText("jLabel1");
-
-        jMenuItem1.setText("jMenuItem1");
-
-        jMenuItem2.setText("jMenuItem2");
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DO_NOTHING_ON_CLOSE);
         setTitle("Axoloti");
@@ -322,6 +362,12 @@ jMenuOpen.addActionListener(new java.awt.event.ActionListener() {
     }
     });
     jMenuFile.add(jMenuOpen);
+
+    jMenuOpenExample.setText("Open example");
+    jMenuFile.add(jMenuOpenExample);
+
+    recentFileMenu1.setText("Open recent");
+    jMenuFile.add(recentFileMenu1);
     jMenuFile.add(jSeparator2);
 
     jMenuReloadObjects.setText("Reload Objects");
@@ -381,13 +427,13 @@ jMenuBar1.add(jMenuEdit);
 
 jMenuBoard.setText("Board");
 
-jMenuSelectCom.setText("Select serial port");
-jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
+jMenuItemSelectCom.setText("Select serial port");
+jMenuItemSelectCom.addActionListener(new java.awt.event.ActionListener() {
     public void actionPerformed(java.awt.event.ActionEvent evt) {
-        jMenuSelectComActionPerformed(evt);
+        jMenuItemSelectComActionPerformed(evt);
     }
     });
-    jMenuBoard.add(jMenuSelectCom);
+    jMenuBoard.add(jMenuItemSelectCom);
 
     jMenuItemFConnect.setText("Connect");
     jMenuItemFConnect.addActionListener(new java.awt.event.ActionListener() {
@@ -433,15 +479,23 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
     });
     jMenuFirmware.add(jMenuItemFCompile);
 
-    jMenuItemFlashSDC.setText("Flash using sdcard");
-    jMenuItemFlashSDC.addActionListener(new java.awt.event.ActionListener() {
+    jMenuItemFlashSDR.setText("Flash (using sdram)");
+    jMenuItemFlashSDR.addActionListener(new java.awt.event.ActionListener() {
         public void actionPerformed(java.awt.event.ActionEvent evt) {
-            jMenuItemFlashSDCActionPerformed(evt);
+            jMenuItemFlashSDRActionPerformed(evt);
         }
     });
-    jMenuFirmware.add(jMenuItemFlashSDC);
+    jMenuFirmware.add(jMenuItemFlashSDR);
 
-    jMenuItemFlashDFU.setText("Flash with DFU");
+    jMenuItemEnterDFU.setText("Enter DFU");
+    jMenuItemEnterDFU.addActionListener(new java.awt.event.ActionListener() {
+        public void actionPerformed(java.awt.event.ActionEvent evt) {
+            jMenuItemEnterDFUActionPerformed(evt);
+        }
+    });
+    jMenuFirmware.add(jMenuItemEnterDFU);
+
+    jMenuItemFlashDFU.setText("Flash (using DFU)");
     jMenuItemFlashDFU.addActionListener(new java.awt.event.ActionListener() {
         public void actionPerformed(java.awt.event.ActionEvent evt) {
             jMenuItemFlashDFUActionPerformed(evt);
@@ -449,15 +503,23 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
     });
     jMenuFirmware.add(jMenuItemFlashDFU);
 
-    jMenuItemFlashSTLINK.setText("Flash with STLINK");
-    jMenuItemFlashSTLINK.addActionListener(new java.awt.event.ActionListener() {
+    jMenuItemRefreshFWID.setText("Refresh firmware ID");
+    jMenuItemRefreshFWID.addActionListener(new java.awt.event.ActionListener() {
         public void actionPerformed(java.awt.event.ActionEvent evt) {
-            jMenuItemFlashSTLINKActionPerformed(evt);
+            jMenuItemRefreshFWIDActionPerformed(evt);
         }
     });
-    jMenuFirmware.add(jMenuItemFlashSTLINK);
+    jMenuFirmware.add(jMenuItemRefreshFWID);
 
     jMenuBoard.add(jMenuFirmware);
+
+    jMenuItemListUSB.setText("List USB Devices");
+    jMenuItemListUSB.addActionListener(new java.awt.event.ActionListener() {
+        public void actionPerformed(java.awt.event.ActionEvent evt) {
+            jMenuItemListUSBActionPerformed(evt);
+        }
+    });
+    jMenuBoard.add(jMenuItemListUSB);
 
     jMenuBar1.add(jMenuBoard);
 
@@ -557,16 +619,6 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
         jMenuWindow.removeAll();
     }//GEN-LAST:event_jMenuWindowMenuDeselected
 
-    private void jMenuItemFlashDFUActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemFlashDFUActionPerformed
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdStop());
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdDisconnect());
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdFlashDFU());
-    }//GEN-LAST:event_jMenuItemFlashDFUActionPerformed
-
-    private void jMenuItemFCompileActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemFCompileActionPerformed
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdCompileFirmware());
-    }//GEN-LAST:event_jMenuItemFCompileActionPerformed
-
     private void jMenuItemPanicActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemPanicActionPerformed
         qcmdprocessor.Panic();
     }//GEN-LAST:event_jMenuItemPanicActionPerformed
@@ -583,9 +635,9 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
         qcmdprocessor.serialconnection.connect();
     }//GEN-LAST:event_jMenuItemFConnectActionPerformed
 
-    private void jMenuSelectComActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuSelectComActionPerformed
+    private void jMenuItemSelectComActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemSelectComActionPerformed
         qcmdprocessor.serialconnection.SelectSerialPort();
-    }//GEN-LAST:event_jMenuSelectComActionPerformed
+    }//GEN-LAST:event_jMenuItemSelectComActionPerformed
 
     private void jMenuQuitActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuQuitActionPerformed
         Quit();
@@ -616,12 +668,6 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
     private void jMenuReloadObjectsActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuReloadObjectsActionPerformed
         axoObjects.LoadAxoObjects();
     }//GEN-LAST:event_jMenuReloadObjectsActionPerformed
-
-    private void jMenuItemFlashSTLINKActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemFlashSTLINKActionPerformed
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdStop());
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdDisconnect());
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdFlashSTLink());
-    }//GEN-LAST:event_jMenuItemFlashSTLINKActionPerformed
 
     PreferencesFrame pp;
     private void jMenuItemPreferencesActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemPreferencesActionPerformed
@@ -668,15 +714,47 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
         }
     }//GEN-LAST:event_jMenuAutoTestActionPerformed
 
-    private void jMenuItemFlashSDCActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemFlashSDCActionPerformed
-        qcmdprocessor.AppendToQueue(new QCmdUploadFile(new File("firmware/build/axoloti.bin"), "firmware.bin"));
-        qcmdprocessor.AppendToQueue(new QCmdUploadPatch(new File("firmware/flasher/build/flasher.bin")));
-        qcmdprocessor.AppendToQueue(new QCmdStart());
-    }//GEN-LAST:event_jMenuItemFlashSDCActionPerformed
-
     private void formWindowClosing(java.awt.event.WindowEvent evt) {//GEN-FIRST:event_formWindowClosing
         Quit();
     }//GEN-LAST:event_formWindowClosing
+
+    private void jMenuItemRefreshFWIDActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemRefreshFWIDActionPerformed
+        updateLinkFirmwareID();
+    }//GEN-LAST:event_jMenuItemRefreshFWIDActionPerformed
+
+    private void jMenuItemFlashDFUActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemFlashDFUActionPerformed
+        if (Usb.isDFUDeviceAvailable()) {
+            qcmdprocessor.AppendToQueue(new qcmds.QCmdStop());
+            qcmdprocessor.AppendToQueue(new qcmds.QCmdDisconnect());
+            qcmdprocessor.AppendToQueue(new qcmds.QCmdFlashDFU());
+        } else {
+            Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, "No devices in DFU mode detected. To bring Axoloti Core in DFU mode, remove power from Axoloti Core, and power it up while holding button S1. The USB port needs to be connected with this computer too...");
+        }
+    }//GEN-LAST:event_jMenuItemFlashDFUActionPerformed
+
+    private void jMenuItemFlashSDRActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemFlashSDRActionPerformed
+        String fname = Constants.firmwaredir + "/flasher/flasher_build/flasher.bin";
+        File f = new File(fname);
+        if (f.canRead()) {
+            qcmdprocessor.AppendToQueue(new QCmdUploadFWSDRam());
+            qcmdprocessor.AppendToQueue(new QCmdUploadPatch());
+            qcmdprocessor.AppendToQueue(new QCmdStart());
+        } else {
+            Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, "can't read flasher, please compile firmware! (file: " + fname + " )");
+        }
+    }//GEN-LAST:event_jMenuItemFlashSDRActionPerformed
+
+    private void jMenuItemFCompileActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemFCompileActionPerformed
+        qcmdprocessor.AppendToQueue(new qcmds.QCmdCompileFirmware());
+    }//GEN-LAST:event_jMenuItemFCompileActionPerformed
+
+    private void jMenuItemListUSBActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemListUSBActionPerformed
+        Usb.listDevices();
+    }//GEN-LAST:event_jMenuItemListUSBActionPerformed
+
+    private void jMenuItemEnterDFUActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemEnterDFUActionPerformed
+        qcmdprocessor.AppendToQueue(new QCmdBringToDFUMode());
+    }//GEN-LAST:event_jMenuItemEnterDFUActionPerformed
 
     public void NewPatch() {
         PatchGUI patch1 = new PatchGUI();
@@ -711,26 +789,31 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
             prefs.setCurrentFileDirectory(fc.getCurrentDirectory().getPath());
             prefs.SavePrefs();
             File f = fc.getSelectedFile();
-            Serializer serializer = new Persister();
-            try {
-                PatchGUI patch1 = serializer.read(PatchGUI.class, f);
-                PatchFrame pf = new PatchFrame(patch1, qcmdprocessor);
-                patch1.setFileNamePath(f.getAbsolutePath());
-                patch1.PostContructor();
-                pf.UpdateConnectStatus();
-                patch1.setFileNamePath(f.getPath());
-                pf.setVisible(true);
-                patches.add(patch1);
-            } catch (Exception ex) {
-                Logger.getLogger(AxoObjects.class.getName()).log(Level.SEVERE, null, ex);
-            }
+            OpenPatch(f);
         }
     }
+
+    public void OpenPatch(File f) {
+        Serializer serializer = new Persister();
+        try {
+            PatchGUI patch1 = serializer.read(PatchGUI.class, f);
+            PatchFrame pf = new PatchFrame(patch1, qcmdprocessor);
+            patch1.setFileNamePath(f.getAbsolutePath());
+            patch1.PostContructor();
+            pf.UpdateConnectStatus();
+            patch1.setFileNamePath(f.getPath());
+            pf.setVisible(true);
+            patches.add(patch1);
+            MainFrame.prefs.addRecentFile(f.getAbsolutePath());
+        } catch (Exception ex) {
+            Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.Box.Filler filler1;
     private javax.swing.JButton jButtonClear;
     private javax.swing.JCheckBox jCheckBoxConnect;
-    private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabelCPUID;
     private javax.swing.JLabel jLabelFirmwareID;
@@ -744,24 +827,25 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
     private javax.swing.JMenu jMenuFirmware;
     private javax.swing.JMenu jMenuHelp;
     private javax.swing.JMenuItem jMenuHelpContents;
-    private javax.swing.JMenuItem jMenuItem1;
-    private javax.swing.JMenuItem jMenuItem2;
     private javax.swing.JMenuItem jMenuItemCopy;
+    private javax.swing.JMenuItem jMenuItemEnterDFU;
     private javax.swing.JMenuItem jMenuItemFCompile;
     private javax.swing.JMenuItem jMenuItemFConnect;
     private javax.swing.JMenuItem jMenuItemFDisconnect;
     private javax.swing.JMenuItem jMenuItemFlashDFU;
-    private javax.swing.JMenuItem jMenuItemFlashSDC;
-    private javax.swing.JMenuItem jMenuItemFlashSTLINK;
+    private javax.swing.JMenuItem jMenuItemFlashSDR;
+    private javax.swing.JMenuItem jMenuItemListUSB;
     private javax.swing.JMenuItem jMenuItemPanic;
     private javax.swing.JMenuItem jMenuItemPing;
     private javax.swing.JMenuItem jMenuItemPreferences;
+    private javax.swing.JMenuItem jMenuItemRefreshFWID;
+    private javax.swing.JMenuItem jMenuItemSelectCom;
     private javax.swing.JMenuItem jMenuNew;
     private javax.swing.JMenuItem jMenuOpen;
+    private javax.swing.JMenu jMenuOpenExample;
     private javax.swing.JMenuItem jMenuQuit;
     private javax.swing.JMenuItem jMenuRegenerateObjects;
     private javax.swing.JMenuItem jMenuReloadObjects;
-    private javax.swing.JMenuItem jMenuSelectCom;
     private javax.swing.JMenu jMenuWindow;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanelProgress;
@@ -771,6 +855,7 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
     private javax.swing.JPopupMenu.Separator jSeparator2;
     private javax.swing.JPopupMenu.Separator jSeparator3;
     private javax.swing.JTextPane jTextPaneLog;
+    private axoloti.menus.RecentFileMenu recentFileMenu1;
     // End of variables declaration//GEN-END:variables
 
     public void SetProgressValue(int i) {
@@ -782,17 +867,30 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
     }
 
     public void ShowDisconnect() {
-        for (Patch p : patches) {
-            p.patchframe.ShowDisconnect();
-        }
-        jCheckBoxConnect.setSelected(false);
+        ShowConnectDisconnect(false);
     }
 
     public void ShowConnect() {
+        ShowConnectDisconnect(true);
+    }
+
+    void ShowConnectDisconnect(boolean connect) {
         for (Patch p : patches) {
-            p.patchframe.ShowConnect();
+            if (connect) {
+                p.patchframe.ShowConnect();
+            } else {
+                p.patchframe.ShowDisconnect();
+            }
         }
-        jCheckBoxConnect.setSelected(true);
+        jCheckBoxConnect.setSelected(connect);
+        jMenuItemEnterDFU.setEnabled(connect);
+        jMenuItemFlashSDR.setEnabled(connect);
+        jMenuItemFDisconnect.setEnabled(connect);
+
+        jMenuItemFConnect.setEnabled(!connect);
+        jMenuItemSelectCom.setEnabled(!connect);
+
+        setCpuID(null);
     }
 
     void Quit() {
@@ -801,18 +899,25 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
                 break;
             }
         }
+        prefs.SavePrefs();
         if (patches.isEmpty()) {
             System.exit(0);
         }
     }
 
     void setCpuID(String cpuId) {
-        jLabelCPUID.setText("Cpu ID = " + cpuId);
+        if (cpuId == null) {
+            jLabelCPUID.setText(" ");
+        } else {
+            jLabelCPUID.setText("Cpu ID = " + cpuId);
+        }
     }
 
     public void updateLinkFirmwareID() {
         LinkFirmwareID = FirmwareID.getFirmwareID();
-        Logger.getLogger(MainFrame.class.getName()).info("Link to firmware ID " + LinkFirmwareID);
+        TargetFirmwareID = LinkFirmwareID;
+        jLabelFirmwareID.setText("Firmware ID = " + LinkFirmwareID);
+        Logger.getLogger(MainFrame.class.getName()).info("Link to firmware CRC " + LinkFirmwareID);
     }
 
 //    boolean isFirmwareUpgrading = false;
@@ -821,9 +926,8 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
             return;
         }
         TargetFirmwareID = firmwareId;
-        jLabelFirmwareID.setText("Firmware ID = " + firmwareId);
         if (!firmwareId.equals(this.LinkFirmwareID)) {
-            Logger.getLogger(AxoObjects.class.getName()).severe("Firmware ID mismatch! Please flash the firmware first!");
+            Logger.getLogger(AxoObjects.class.getName()).severe("Firmware CRC mismatch! Please flash the firmware first! Target firmware CRC = " + firmwareId);
         }
     }
 
@@ -831,4 +935,16 @@ jMenuSelectCom.addActionListener(new java.awt.event.ActionListener() {
         return qcmdprocessor;
     }
 
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        String cmd = e.getActionCommand();
+        if (cmd.startsWith("open:")) {
+            String fn = cmd.substring(5);
+            OpenPatch(new File(fn));
+        }
+    }
+
+    public void initMidiInput(String midiInputDevice) {
+        midiInput.start(midiInputDevice);
+    }
 }

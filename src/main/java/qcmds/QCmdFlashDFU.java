@@ -34,7 +34,11 @@ public class QCmdFlashDFU extends QCmdShellTask {
 
     @Override
     public String GetDoneMessage() {
-        return "Done flashing firmware with DFU";
+        if (success) {
+            return "Done flashing firmware with DFU.";
+        } else {
+            return "Flashing firmware failed!";
+        }
     }
 
     @Override
@@ -46,7 +50,7 @@ public class QCmdFlashDFU extends QCmdShellTask {
         } else if (OSDetect.getOS() == OSDetect.OS.LINUX) {
             return "/bin/sh platform_linux/upload_fw_dfu.sh";
         } else {
-            Logger.getLogger(QCmdFlashSTLink.class.getName()).log(Level.SEVERE, "UPLOAD: OS UNKNOWN!");
+            Logger.getLogger(QCmdFlashDFU.class.getName()).log(Level.SEVERE, "UPLOAD: OS UNKNOWN!");
             return null;
         }
     }

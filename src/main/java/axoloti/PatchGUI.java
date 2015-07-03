@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013, 2014, 2015 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -182,40 +182,41 @@ public class PatchGUI extends Patch {
 
         };
         Layers.setTransferHandler(TH);
-        Layers.setDropTarget(new DropTarget(ObjectLayer, new DropTargetListener() {
-            @Override
-            public void dragEnter(DropTargetDragEvent dtde) {
-            }
+        /*
+         Layers.setDropTarget(new DropTarget(ObjectLayer, new DropTargetListener() {
+         @Override
+         public void dragEnter(DropTargetDragEvent dtde) {
+         }
 
-            @Override
-            public void dragOver(DropTargetDragEvent dtde) {
-                for (Component cmp : SelectionRectLayer.getComponents()) {
-                    if (cmp instanceof NetDragging) {
-                        NetDragging nd = (NetDragging) cmp;
-                        Point ps = SelectionRectLayer.getLocationOnScreen();
-                        Point pl = new Point(dtde.getLocation().x - ps.x, dtde.getLocation().y - ps.y);
-                        nd.SetDragPoint(dtde.getLocation());
-                        SelectionRectLayer.repaint();
-                    }
-                }
-            }
+         @Override
+         public void dragOver(DropTargetDragEvent dtde) {
+         for (Component cmp : SelectionRectLayer.getComponents()) {
+         if (cmp instanceof NetDragging) {
+         NetDragging nd = (NetDragging) cmp;
+         Point ps = SelectionRectLayer.getLocationOnScreen();
+         Point pl = new Point(dtde.getLocation().x - ps.x, dtde.getLocation().y - ps.y);
+         nd.SetDragPoint(dtde.getLocation());
+         SelectionRectLayer.repaint();
+         }
+         }
+         }
 
-            @Override
-            public void dropActionChanged(DropTargetDragEvent dtde) {
+         @Override
+         public void dropActionChanged(DropTargetDragEvent dtde) {
 
-            }
+         }
 
-            @Override
-            public void dragExit(DropTargetEvent dte) {
+         @Override
+         public void dragExit(DropTargetEvent dte) {
 
-            }
+         }
 
-            @Override
-            public void drop(DropTargetDropEvent dtde) {
+         @Override
+         public void drop(DropTargetDropEvent dtde) {
 
-            }
-        }));
-
+         }
+         }));
+         */
         InputMap inputMap = Layers.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_X,
                 Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()), "cut");
@@ -295,11 +296,18 @@ public class PatchGUI extends Patch {
                         ShowClassSelector(me.getPoint(), null);
                         me.consume();
                     } else {
+                        me.consume();
                         if ((osf != null) && osf.isVisible()) {
                             osf.Accept();
                         }
                         Layers.requestFocusInWindow();
                     }
+                } else {
+                    me.consume();
+                    if ((osf != null) && osf.isVisible()) {
+                        osf.Cancel();
+                    }
+                    Layers.requestFocusInWindow();
                 }
             }
 
@@ -356,28 +364,52 @@ public class PatchGUI extends Patch {
         Layers.setVisible(true);
         Layers.invalidate();
         Layers.repaint();
-        /*
-         DropTarget dt = new DropTarget(){
-         @Override
-         public synchronized void drop(DropTargetDropEvent dtde) {
-         Transferable t = dtde.getTransferable();
-         try {
-         String s = (String)t.getTransferData(DataFlavor.stringFlavor);
-         AxoObjectAbstract obj = MainFrame.axoObjects.GetAxoObject(s);
-         if (obj != null) {                    
-         AddObjectInstance(obj, dtde.getLocation());
-         } else {
-         System.out.println("spilled on patch: " + s);
-         }
-         } catch (UnsupportedFlavorException ex) {
-         Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
-         } catch (IOException ex) {
-         Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
-         }
-         super.drop(dtde);
-         };
-         };
-         Layers.setDropTarget(dt);*/
+
+        DropTarget dt = new DropTarget() {
+
+            @Override
+            public synchronized void dragOver(DropTargetDragEvent dtde) {
+                for (Component cmp : SelectionRectLayer.getComponents()) {
+                    if (cmp instanceof NetDragging) {
+                        NetDragging nd = (NetDragging) cmp;
+                        nd.SetDragPoint(dtde.getLocation());
+                        SelectionRectLayer.repaint();
+                        break;
+                    }
+                }
+            }
+
+            @Override
+            public synchronized void drop(DropTargetDropEvent dtde) {
+                Transferable t = dtde.getTransferable();
+                try {
+                    String s = (String) t.getTransferData(DataFlavor.stringFlavor);
+                    OutletInstance ol;
+                    InletInstance il;
+                    if ((ol = getOutletByReference(s)) != null) {
+                        disconnect(ol);
+                    } else if ((il = getInletByReference(s)) != null) {
+                        disconnect(il);
+                    }
+                    /*
+                     AxoObjectAbstract obj = MainFrame.axoObjects.GetAxoObject(s);
+                     if (obj != null) {
+                     AddObjectInstance(obj, dtde.getLocation());
+                     } else {
+                     System.out.println("spilled on patch: " + s);
+                     }
+                     */
+                } catch (UnsupportedFlavorException ex) {
+                    Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                super.drop(dtde);
+            }
+        ;
+        };
+        Layers.setDropTarget(dt);
+
         Layers.setPreferredSize(new Dimension(5000, 5000));
         Layers.setSize(Layers.getPreferredSize());
         Layers.setVisible(true);
@@ -438,18 +470,21 @@ public class PatchGUI extends Patch {
                 if (n.source != null) {
                     ArrayList<OutletInstance> source2 = new ArrayList<OutletInstance>();
                     for (OutletInstance o : n.source) {
-                        String r[] = o.name.split(" ");
-                        if (r.length == 2) {
-                            String on2 = dict.get(r[0]);
+                        //String r[] = o.name.split(" ");
+                        int sepIndex = o.name.lastIndexOf(' ');
+                        String objname = o.name.substring(0, sepIndex);
+                        String outletname = o.name.substring(sepIndex + 1);
+                        if ((objname.length() > 1) && (outletname.length() > 1)) {
+                            String on2 = dict.get(objname);
                             if (on2 != null) {
 //                                o.name = on2 + " " + r[1];
                                 OutletInstance i = new OutletInstance();
-                                i.name = on2 + " " + r[1];
+                                i.name = on2 + " " + outletname;
                                 source2.add(i);
                             } else if (restoreConnectionsToExternalOutlets) {
-                                AxoObjectInstanceAbstract obj = GetObjectInstance(r[0]);
+                                AxoObjectInstanceAbstract obj = GetObjectInstance(objname);
                                 if ((obj != null) && (connectedOutlet == null)) {
-                                    OutletInstance oi = obj.GetOutletInstance(r[1]);
+                                    OutletInstance oi = obj.GetOutletInstance(outletname);
                                     if (oi != null) {
                                         connectedOutlet = oi;
                                     }
@@ -462,12 +497,14 @@ public class PatchGUI extends Patch {
                 if (n.dest != null) {
                     ArrayList<InletInstance> dest2 = new ArrayList<InletInstance>();
                     for (InletInstance o : n.dest) {
-                        String r[] = o.name.split(" ");
-                        if (r.length == 2) {
-                            String on2 = dict.get(r[0]);
+                        int sepIndex = o.name.lastIndexOf(' ');
+                        String objname = o.name.substring(0, sepIndex);
+                        String inletname = o.name.substring(sepIndex + 1);
+                        if ((objname.length() > 1) && (inletname.length() > 1)) {
+                            String on2 = dict.get(objname);
                             if (on2 != null) {
                                 InletInstance i = new InletInstance();
-                                i.name = on2 + " " + r[1];
+                                i.name = on2 + " " + inletname;
                                 dest2.add(i);
                             } else {/*
                                  AxoObjectInstanceAbstract obj = GetObjectInstance(r[0]);

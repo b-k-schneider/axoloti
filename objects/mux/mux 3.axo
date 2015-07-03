@@ -10,7 +10,7 @@
          <int32 class="axoloti.inlets.InletInt32Pos" name="s" description="select"/>
       </inlets>
       <outlets>
-         <frac32 name="o" description="output" SumBuffer="false"/>
+         <frac32 name="o" description="output"/>
       </outlets>
       <displays/>
       <params/>
@@ -34,7 +34,7 @@
          <int32 class="axoloti.inlets.InletInt32Pos" name="s" description="select"/>
       </inlets>
       <outlets>
-         <int32 name="o" description="output" SumBuffer="false"/>
+         <int32 name="o" description="output"/>
       </outlets>
       <displays/>
       <params/>
@@ -58,7 +58,7 @@
          <int32 class="axoloti.inlets.InletInt32Pos" name="s" description="select"/>
       </inlets>
       <outlets>
-         <frac32buffer name="o" description="output" SumBuffer="false"/>
+         <frac32buffer name="o" description="output"/>
       </outlets>
       <displays/>
       <params/>
@@ -82,7 +82,31 @@
          <int32 class="axoloti.inlets.InletInt32Pos" name="s" description="select"/>
       </inlets>
       <outlets>
-         <bool32 name="o" description="output" SumBuffer="false"/>
+         <bool32 name="o" description="output"/>
+      </outlets>
+      <displays/>
+      <params/>
+      <attribs/>
+      <code.krate><![CDATA[   switch(%s%>0?%s%:0){
+      case 0: %o%= %i0%;break;
+      case 1: %o%= %i1%;break;
+      case 2: %o%= %i2%;break;
+      default: %o%= %i2%;break;
+}
+]]></code.krate>
+   </obj.normal>
+   <obj.normal id="mux 3" sha="15567ca11a28708fa9f077dc66887942579eff76">
+      <sDescription>input multiplexer. Output is i1 when s &lt; 1, i[i] when....</sDescription>
+      <author>Johannes Taelman</author>
+      <license>BSD</license>
+      <inlets>
+         <charptr32 name="i0" description="input 0"/>
+         <charptr32 name="i1" description="input 1"/>
+         <charptr32 name="i2" description="input 2"/>
+         <int32 class="axoloti.inlets.InletInt32Pos" name="s" description="select"/>
+      </inlets>
+      <outlets>
+         <charptr32 name="o" description="output"/>
       </outlets>
       <displays/>
       <params/>

@@ -1,6 +1,6 @@
 <objdefs>
    <obj.normal id="inconfig" sha="c5ee5e230152b248edde544704970b051688aa4f">
-      <sDescription>Audio input configuration)</sDescription>
+      <sDescription>Audio input configuration</sDescription>
       <author>Johannes Taelman</author>
       <license>BSD</license>
       <inlets/>

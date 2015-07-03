@@ -4,11 +4,11 @@
       <author>Johannes Taelman</author>
       <license>BSD</license>
       <inlets>
-         <frac32 name="pos" description="start position in table"/>
+         <frac32.positive name="pos" description="start position in table"/>
          <bool32.risingfalling name="en" description="enable"/>
       </inlets>
       <outlets>
-         <frac32buffer name="wave" description="wave" SumBuffer="false"/>
+         <frac32buffer name="wave" description="wave"/>
       </outlets>
       <displays/>
       <params/>

@@ -1,5 +1,5 @@
 <objdefs>
-   <obj.normal id="alloc 16b" sha="30e6566ebd5bd19afe2c6975adaa19d5b16584d9">
+   <obj.normal id="alloc 16b" sha="29b2085e28f8f45954e2be8a0ff80c909188ac7a">
       <sDescription>allocate 16bit table in RAM memory, -128.00 .. 127.99</sDescription>
       <author>Johannes Taelman</author>
       <license>BSD</license>
@@ -55,6 +55,8 @@ int16_t array[LENGTH];
 ]]></code.declaration>
       <code.init><![CDATA[{ 
   int i;
-  for(i=0;i<LENGTH;i++) array[i]=0;}%init%]]></code.init>
+  for(i=0;i<LENGTH;i++) array[i]=0;
+}
+%init%]]></code.init>
    </obj.normal>
 </objdefs>

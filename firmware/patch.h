@@ -22,11 +22,13 @@
 #include "hal.h"
 #include "ui.h"
 #include "axoloti_board.h"
+#include "ff.h"
+#include "midi.h"
 
 typedef void (*fptr_patch_init_t)(int32_t fwID);
 typedef void (*fptr_patch_dispose_t)(void);
 typedef void (*fptr_patch_dsp_process_t)(int32_t *, int32_t *);
-typedef void (*fptr_patch_midi_in_handler_t)(uint8_t, uint8_t, uint8_t);
+typedef void (*fptr_patch_midi_in_handler_t)(midi_device_t dev, uint8_t port, uint8_t, uint8_t, uint8_t);
 typedef void (*fptr_patch_applyPreset_t)(int32_t);
 
 typedef struct {
@@ -60,29 +62,21 @@ extern volatile int patchStatus;
 // 1-> stopped
 // >1-> stopping
 
+extern int8_t hid_buttons[8];
+extern int8_t hid_mouse_x;
+extern int8_t hid_mouse_y;
+
 void InitPatch0(void);
 void StartPatch(void);
 void StopPatch(void);
 
-void PatchProcess(int16_t * inbuf, int16_t * outbuf);
-void PatchInit(void);
-void PatchMidiInNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
-void PatchMidiInNoteOff(uint8_t channel, uint8_t note, uint8_t velocity);
-void PatchMidiInControlChange(uint8_t channel, uint8_t cc, uint8_t val);
-void PatchMidiInPitchBend(uint8_t channel, uint8_t data1, uint8_t data2);
-void PatchMidiInAllNotesOff(uint8_t channel);
+void start_dsp_thread(void);
 
-void computebuf(short *inp, short *outp);
-void MidiInNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
-void MidiInNoteOff(uint8_t channel, uint8_t note, uint8_t velocity);
-void MidiInControlChange(uint8_t channel, uint8_t cc, uint8_t val);
-void MidiInPitchBend(uint8_t channel, uint8_t data1, uint8_t data2);
-void MidiInPitchBend(uint8_t channel, uint8_t data1, uint8_t data2);
-void PatchMidiInAllNotesOff(uint8_t channel);
-void PatchMidiInResetControllers(uint8_t channel);
-
-//#define PATCHMAINLOC 0x10000000
 #define PATCHMAINLOC 0x20010000
+
+// patch is located in sector 11
+#define PATCHFLASHLOC 0x080E0000
+#define PATCHFLASHSIZE 0xE000
 
 void StartLoadPatchTread(void);
 void LoadPatch(char *name);

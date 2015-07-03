@@ -19,6 +19,7 @@ package axoloti;
 
 import axoloti.dialogs.SerialPortSelectionDlg;
 import axoloti.parameters.ParameterInstance;
+import axoloti.targetprofile.axoloti_core;
 import displays.DisplayInstance;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -37,6 +38,7 @@ import jssc.SerialPortException;
 import qcmds.QCmd;
 import qcmds.QCmdSerialTask;
 import qcmds.QCmdSerialTaskNull;
+import qcmds.QCmdShowDisconnect;
 
 /**
  *
@@ -52,6 +54,7 @@ public class SerialConnection {
     BlockingQueue<QCmdSerialTask> queueSerialTask;
     private BlockingQueue<QCmd> queueResponse;
     String portName;
+    private axoloti_core targetProfile = new axoloti_core();
 
     public SerialConnection(Patch patch, BlockingQueue<QCmd> queueResponse) {
         this.sync = new Sync();
@@ -111,6 +114,9 @@ public class SerialConnection {
                 Logger.getLogger(SerialConnection.class.getName()).log(Level.SEVERE, null, ex);
             }
             connected = false;
+            CpuId0 = 0;
+            CpuId1 = 0;
+            CpuId2 = 0;
         }
     }
 
@@ -201,8 +207,13 @@ public class SerialConnection {
         serialPort.writeBytes(data);
     }
 
-    public void BringToDFU() {
-        throw new UnsupportedOperationException("Not supported yet.");
+    public void BringToDFU() throws SerialPortException {
+        byte[] data = new byte[4];
+        data[0] = 'A';
+        data[1] = 'x';
+        data[2] = 'o';
+        data[3] = 'D';
+        serialPort.writeBytes(data);
     }
 
     public void SendMidi(int m0, int m1, int m2) throws SerialPortException {
@@ -290,7 +301,7 @@ public class SerialConnection {
         data[1] = 'x';
         data[2] = 'o';
         data[3] = 'W';
-        int tvalue = 0x20010000 + offset; // SRAM1 - must match with ramlink.ld
+        int tvalue = offset;
         int nRead = buffer.length;
         data[4] = (byte) tvalue;
         data[5] = (byte) (tvalue >> 8);
@@ -304,8 +315,7 @@ public class SerialConnection {
         writeBytes(data);
         writeBytes(buffer);
         WaitSync();
-        Logger.getLogger(SerialConnection.class.getName()).log(Level.INFO, "block uploaded: " + buffer.length + " " + offset);
-
+        Logger.getLogger(SerialConnection.class.getName()).log(Level.INFO, "block uploaded @ 0x" + Integer.toHexString(offset) + " length " + buffer.length);
     }
 
     public void TransmitVirtualButton(int b_or, int b_and, int enc1, int enc2, int enc3, int enc4) throws SerialPortException {
@@ -393,6 +403,8 @@ public class SerialConnection {
                 }
             }
             Logger.getLogger(SerialConnection.class.getName()).log(Level.INFO, "transmitter: thread stopped");
+            MainFrame.mainframe.qcmdprocessor.Abort();
+            MainFrame.mainframe.qcmdprocessor.AppendToQueue(new QCmdShowDisconnect());
         }
     }
     int CpuId0 = 0;
@@ -723,4 +735,9 @@ public class SerialConnection {
                 break;
         }
     }
+
+    public axoloti_core getTargetProfile() {
+        return targetProfile;
+    }
+
 }

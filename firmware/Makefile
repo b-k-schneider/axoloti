@@ -83,6 +83,7 @@ CMSIS = ../CMSIS/
 # Define linker script file here
 LDSCRIPT= STM32F407xG.ld
 
+
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
 CSRC = $(PORTSRC) \
@@ -95,7 +96,6 @@ CSRC = $(PORTSRC) \
        $(CHIBIOS)/os/various/chprintf.c \
        $(CHIBIOS)/os/various/memstreams.c \
        axoloti_control.c \
-       codec_ADAU1961.c \
        codec.c \
        axoloti.c \
        axoloti_filters.c \
@@ -142,8 +142,25 @@ CSRC = $(PORTSRC) \
        ${CMSIS}/DSP_Lib/Source/FilteringFunctions/arm_fir_lattice_q31.c\
        ${CMSIS}/DSP_Lib/Source/FilteringFunctions/arm_iir_lattice_init_q31.c\
        ${CMSIS}/DSP_Lib/Source/FilteringFunctions/arm_iir_lattice_q31.c\
-       ${CMSIS}/DSP_Lib/Source/CommonTables/arm_common_tables.c  
-       
+       ${CMSIS}/DSP_Lib/Source/CommonTables/arm_common_tables.c \
+       STM32_USB_Host_Library/Core/Src/usbh_core.c \
+       STM32_USB_Host_Library/Core/Src/usbh_ctlreq.c \
+       STM32_USB_Host_Library/Core/Src/usbh_ioreq.c \
+       STM32_USB_Host_Library/Core/Src/usbh_pipes.c \
+       STM32_USB_Host_Library/Class/HID/Src/usbh_hid.c \
+       STM32_USB_Host_Library/Class/HID/Src/usbh_hid_keybd.c \
+       STM32_USB_Host_Library/Class/HID/Src/usbh_hid_mouse.c \
+       STM32_USB_Host_Library/Class/HID/Src/usbh_hid_parser.c \
+       STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_usb.c \
+       STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c \
+       STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c \
+       STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_hcd.c \
+       usbh_midi_core.c \
+       usbh_conf.c \
+       serial_midi.c \
+       crc32.c \
+       exceptions.c \
+       watchdog.c 
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -176,7 +193,10 @@ INCDIR = ../CMSIS/Include \
 		 $(PORTINC) $(KERNINC) $(TESTINC) \
          $(HALINC) $(PLATFORMINC) $(BOARDINC) \
          $(FATFSINC) \
-         $(CHIBIOS)/os/various
+         $(CHIBIOS)/os/various \
+         STM32_USB_Host_Library/Core/Inc \
+         STM32_USB_Host_Library/Class/HID/Inc \
+         STM32F4xx_HAL_Driver/Inc
 
 #
 # Project, sources and paths

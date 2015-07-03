@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013, 2014, 2015 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -17,6 +17,7 @@
  */
 #include "ch.h"
 #include "hal.h"
+#include "chprintf.h"
 #include "pconnection.h"
 #include "axoloti_control.h"
 #include "parameters.h"
@@ -30,13 +31,24 @@
 #include "string.h"
 #include "virtual_control.h"
 #include "flash.h"
+#include "exceptions.h"
+#include "crc32.h"
+#include "flash.h"
+#include "watchdog.h"
 
 /* Virtual serial port over USB.*/
 SerialUSBDriver SDU1;
 
 void BootLoaderInit(void);
 
+uint32_t fwid;
+
 void InitPConnection(void) {
+
+  extern int32_t _flash_end;
+  fwid = CalcCRC32((uint8_t *)(FLASH_BASE_ADDR),
+                   (uint32_t)(&_flash_end) & 0x07FFFFF);
+
   /*
    * Initializes a serial-over-USB CDC driver.
    */
@@ -52,106 +64,14 @@ void InitPConnection(void) {
   chThdSleepMilliseconds(1000);
   usbStart(serusbcfg.usbp, &usbcfg);
   usbConnectBus(serusbcfg.usbp);
-//  BootLoaderInit();
 }
 
 int AckPending = 0;
+bool connected = 0;
 
 int GetFirmwareID(void) {
-  int i1 = (int)&KVP_RegisterObject;
-  int i2 = (int)&patchMeta;
-  return (i2 << 16) + (i1 & 0xFFFE);
+  return fwid;
 }
-
-void RCC_DeInit(void) {
-#if 0 // does not work
-  /* Set HSION bit */
-  RCC->CR |= (uint32_t)0x00000001;
-
-  /* Reset CFGR register */
-  RCC->CFGR = 0x00000000;
-
-  /* Reset HSEON, CSSON, PLLON, PLLI2S and PLLSAI(STM32F42/43xxx devices) bits */
-  RCC->CR &= (uint32_t)0xEAF6FFFF;
-
-  /* Reset PLLCFGR register */
-  RCC->PLLCFGR = 0x24003010;
-
-  /* Reset PLLI2SCFGR register */
-  RCC->PLLI2SCFGR = 0x20003000;
-
-  /* Reset PLLSAICFGR register, only available for STM32F42/43xxx devices */
-  RCC->PLLSAICFGR = 0x24003000;
-
-  /* Reset HSEBYP bit */
-  RCC->CR &= (uint32_t)0xFFFBFFFF;
-
-  /* Disable all interrupts */
-  RCC->CIR = 0x00000000;
-
-  /* Disable Timers clock prescalers selection, only available for STM32F42/43xxx devices */
-  RCC->DCKCFGR = 0x00000000;
-#endif
-}
-
-void BootLoaderInit(void) {
-  void (*SysMemBootJump)(void) = (void (*)(void)) (*((u32 *)0x1FFF0004));
-  /*
-   usbStop(&USBD1);
-   sdStop(&SD1);
-   sdStop(&SD3);
-   spiStop(&SPID3);
-   i2cStop(&I2CD2);
-   codecStop();
-   sdcStop(&SDCD1);
-   */
-  //    RCC_DeInit();
-      chSysDisable();
-
-      rccResetAHB1(~0);
-      rccResetAHB2(~0);
-      rccResetAHB3(~0);
-      rccResetAPB1(~0);
-      rccResetAPB2(~0);
-
-      __set_PRIMASK(1);
-
-      RCC->CR |= RCC_CR_HSION;
-      RCC->CR &= ~RCC_CR_PLLI2SON;
-      RCC->CR &= ~RCC_CR_CSSON;
-
-      while ((RCC->CR & RCC_CR_HSIRDY) == 0)
-      ;
-
-      RCC->CFGR &= ~0x03;// select HSI clock
-      while (RCC->CFGR & 0x0C)
-      ;
-      // turn pll off
-      RCC->CR &= ~RCC_CR_PLLON;
-
-//  RCC->PLLCFGR = 0x24003010;
-
-      RCC_DeInit();
-      SysTick->CTRL = 0;
-      SysTick->LOAD = 0;
-      SysTick->VAL = 0;
-      __set_PRIMASK(1);
-
-      /*
-
-       RCC->APB1ENR = 0;
-       RCC->APB2ENR = 0;
-       RCC->CFGR &= 0x300; // preserve reserved bits
-       */
-      SYSCFG->MEMRMP |= 0x01;
-      SYSCFG->MEMRMP &= ~0x02;
-
-      __set_MSP(0x20001000);
-      SysMemBootJump();
-
-      while(1)
-      ;
-    }
 
 void TransmitDisplayPckt(void) {
   if (patchMeta.pDisplayVector == 0)
@@ -159,29 +79,28 @@ void TransmitDisplayPckt(void) {
   unsigned int length = 12 + (patchMeta.pDisplayVector[2] * 4);
   if (length > 2048)
     return; // FIXME
-  chSequentialStreamWrite((BaseSequentialStream *)&SDU1,
-                          (const unsigned char*)&patchMeta.pDisplayVector[0],
+  chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+                          (const unsigned char* )&patchMeta.pDisplayVector[0],
                           length);
 }
 
-void TransmitTextMessageHeader(void) {
-  int h = 0x546F7841; // "AxoT"
-  chSequentialStreamWrite((BaseSequentialStream *)&SDU1,
-                          (const unsigned char*)&h, 4);
-}
+void LogTextMessage(const char* format, ...) {
+  if (connected ) {
+    int h = 0x546F7841; // "AxoT"
+    chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+                            (const unsigned char* )&h, 4);
 
-void TransmitTextMessage(const char *c) {
-  TransmitTextMessageHeader();
-  unsigned int l = strlen(c);
-  chSequentialStreamWrite((BaseSequentialStream *)&SDU1,
-                          (const unsigned char*)&c[0], l);
-  chSequentialStreamPut((BaseSequentialStream *)&SDU1, 0);
-  chThdSleep(10);
+    va_list ap;
+    va_start(ap, format);
+    chvprintf((BaseSequentialStream * )&SDU1, format, ap);
+    va_end(ap);
+    chSequentialStreamPut((BaseSequentialStream * )&SDU1, 0);
+  }
 }
 
 void PExTransmit(void) {
   int i;
-  if (chOQIsEmptyI(&SDU1.oqueue) ) {
+  if (chOQIsEmptyI(&SDU1.oqueue)) {
     if (AckPending) {
       int ack[7];
       ack[0] = 0x416F7841; // "AxoA"
@@ -191,11 +110,14 @@ void PExTransmit(void) {
       ack[4] = *((int*)0x1FFF7A10); // CPU unique ID
       ack[5] = *((int*)0x1FFF7A14); // CPU unique ID
       ack[6] = *((int*)0x1FFF7A18); // CPU unique ID
-      chSequentialStreamWrite((BaseSequentialStream *)&SDU1,
-                              (const unsigned char*)&ack[0], 7*4);
+      chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+                              (const unsigned char* )&ack[0], 7 * 4);
 
       if (!patchStatus)
         TransmitDisplayPckt();
+
+      connected = 1;
+      exception_checkandreport();
       AckPending = 0;
     }
     TransmitLCDoverUSB();
@@ -208,8 +130,8 @@ void PExTransmit(void) {
           msg.header = 0x506F7841; //"AxoP"
           msg.index = i;
           msg.value = v;
-          chSequentialStreamWrite((BaseSequentialStream *)&SDU1,
-                                  (const unsigned char*)&msg, sizeof(msg));
+          chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+                                  (const unsigned char* )&msg, sizeof(msg));
         }
       }
     }
@@ -261,8 +183,8 @@ static FRESULT scan_files(char *path) {
          */
         strcpy(&((char*)fbuff)[8], fn);
         int l = strlen((char *)(&fbuff[2]));
-        chSequentialStreamWrite((BaseSequentialStream *)&SDU1,
-                                (const unsigned char*)fbuff, l+9);
+        chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+                                (const unsigned char* )fbuff, l + 9);
       }
     }
   }
@@ -276,7 +198,7 @@ void ReadDirectoryListing(void) {
 
   err = f_getfree("/", &clusters, &fsp);
   if (err != FR_OK) {
-    TransmitTextMessage("FS: f_getfree() failed\r\n");
+    LogTextMessage("FS: f_getfree() failed\r\n");
     return;
   }
   /*
@@ -292,8 +214,8 @@ void ReadDirectoryListing(void) {
   fbuff[1] = clusters;
   fbuff[2] = fsp->csize;
   fbuff[3] = MMCSD_BLOCK_SIZE;
-  chSequentialStreamWrite((BaseSequentialStream *)&SDU1,
-                          (const unsigned char*)(&fbuff[0]), 16);
+  chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+                          (const unsigned char* )(&fbuff[0]), 16);
   chThdSleepMilliseconds(10);
   fbuff[0] = 0;
   scan_files((char *)&fbuff[0]);
@@ -303,13 +225,13 @@ void ReadDirectoryListing(void) {
  *
  * "AxoP" (int value, int16 index) -> parameter set
  * "AxoR" (int length, data) -> preset data set
- * "AxoW" (int length, int offset, char[length] data) -> data write
+ * "AxoW" (int length, int addr, char[length] data) -> data write
  * "Axow" (int length, int offset, char[12] filename, char[length] data) -> data write to sdcard
  * "AxoS" -> start patch
  * "Axos" -> stop patch
  * "AxoT" (char number) -> apply preset
  * "AxoM" (char char char) -> 3 byte midi message
- * "AxoD" go to DFU mode (not working!)
+ * "AxoD" go to DFU mode
  * "AxoF" copy patch code to flash (assumes patch is stopped)
  * "Axod" read directory listing
  * "AxoC (int length) (char[] filename)" create and open file on sdcard
@@ -328,15 +250,15 @@ void CreateFile(void) {
   FRESULT err;
   err = f_open(&pFile, &FileName[0], FA_WRITE | FA_CREATE_ALWAYS);
   if (err != FR_OK) {
-    TransmitTextMessage("File open failed");
+    LogTextMessage("File open failed");
   }
   err = f_lseek(&pFile, pFileSize);
   if (err != FR_OK) {
-    TransmitTextMessage("File resize failed");
+    LogTextMessage("File resize failed");
   }
   err = f_lseek(&pFile, 0);
   if (err != FR_OK) {
-    TransmitTextMessage("File seek failed");
+    LogTextMessage("File seek failed");
   }
 }
 
@@ -344,7 +266,7 @@ void CloseFile(void) {
   FRESULT err;
   err = f_close(&pFile);
   if (err != FR_OK) {
-    TransmitTextMessage("File close failed");
+    LogTextMessage("File close failed");
   }
 }
 
@@ -352,13 +274,29 @@ void CopyPatchToFlash(void) {
   flash_unlock();
   flash_Erase_sector(11);
   int src_addr = PATCHMAINLOC;
-  int flash_addr = 0x080E0000;
+  int flash_addr = PATCHFLASHLOC;
   int c;
-  for (c = 0; c < 48 * 1024;) {
+  for (c = 0; c < PATCHFLASHSIZE;) {
     flash_ProgramWord(flash_addr, *(int32_t *)src_addr);
     src_addr += 4;
     flash_addr += 4;
     c += 4;
+  }
+  // verify
+  src_addr = PATCHMAINLOC;
+  flash_addr = PATCHFLASHLOC;
+  int err = 0;
+  for (c = 0; c < PATCHFLASHSIZE;) {
+    if (*(int32_t *)flash_addr != *(int32_t *)src_addr)
+      err++;
+    src_addr += 4;
+    flash_addr += 4;
+    c += 4;
+  }
+  if (err) {
+    while (1) {
+      // flash verify fail
+    }
   }
   AckPending = 1;
 }
@@ -431,7 +369,7 @@ void PExReceiveByte(unsigned char c) {
         state = 0;
         header = 0;
         StopPatch();
-        BootLoaderInit();
+        exception_initiate_dfu();
       }
       else if (c == 'F') { // copy to flash
         state = 0;
@@ -617,16 +555,16 @@ void PExReceiveByte(unsigned char c) {
           sdAttemptMountIfUnmounted();
           err = f_open(&pFile, &FileName[0], FA_WRITE | FA_CREATE_ALWAYS);
           if (err != FR_OK) {
-            TransmitTextMessage("File open failed");
+            LogTextMessage("File open failed");
           }
           int bytes_written;
           err = f_write(&pFile, (char *)offset, length, (void *)&bytes_written);
           if (err != FR_OK) {
-            TransmitTextMessage("File write failed");
+            LogTextMessage("File write failed");
           }
           err = f_close(&pFile);
           if (err != FR_OK) {
-            TransmitTextMessage("File close failed");
+            LogTextMessage("File close failed");
           }
           AckPending = 1;
         }
@@ -656,7 +594,8 @@ void PExReceiveByte(unsigned char c) {
       break;
     case 6:
       midi_r[2] = c;
-      MidiInMsgHandler(midi_r[0], midi_r[1], midi_r[2]);
+      MidiInMsgHandler(MIDI_DEVICE_INTERNAL, 1, midi_r[0], midi_r[1],
+                       midi_r[2]);
       header = 0;
       state = 0;
       break;
@@ -730,7 +669,7 @@ void PExReceiveByte(unsigned char c) {
           err = f_write(&pFile, (char *)0x20010000, length,
                         (void *)&bytes_written);
           if (err != FR_OK) {
-            TransmitTextMessage("File write failed");
+            LogTextMessage("File write failed");
           }
           AckPending = 1;
         }
@@ -844,7 +783,7 @@ void PExReceiveByte(unsigned char c) {
 void PExReceive(void) {
   if (!AckPending) {
     unsigned char received;
-    while (chnReadTimeout(&SDU1, &received, 1, TIME_IMMEDIATE )) {
+    while (chnReadTimeout(&SDU1, &received, 1, TIME_IMMEDIATE)) {
       PExReceiveByte(received);
     }
   }
