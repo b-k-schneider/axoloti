@@ -45,9 +45,11 @@ public class PatchSettings {
     @Element(required = false)
     private String License;
     @Element(required = false)
+    private String Attributions;
+    @Element(required = false)
     private Boolean Saturate;
     PatchSettingsFrame editor;
-
+    
     public int GetMidiChannel() {
         if (MidiChannel != null) {
             SetMidiChannel(MidiChannel);
@@ -67,14 +69,14 @@ public class PatchSettings {
         MidiChannel = i;
     }
 
-    public boolean GetMidiChannelSelector() {
+    public boolean GetMidiSelector() {
         if (HasMidiChannelSelector == null) {
             return false;
         }
         return HasMidiChannelSelector;
     }
 
-    public void SetMidiChannelSelector(boolean b) {
+    public void SetMidiSelector(boolean b) {
         if (b) {
             HasMidiChannelSelector = b;
         } else {
@@ -130,11 +132,12 @@ public class PatchSettings {
         NModulationTargetsPerSource = i;
     }
 
-    void showEditor() {
+    void showEditor(Patch patch) {
         if (editor == null) {
-            editor = new PatchSettingsFrame(this);
+            editor = new PatchSettingsFrame(this, patch);
         }
         editor.setVisible(true);
+        editor.setState(java.awt.Frame.NORMAL);
         editor.toFront();
     }
 
@@ -152,6 +155,14 @@ public class PatchSettings {
 
     public void setLicense(String License) {
         this.License = License;
+    }
+
+    public String getAttributions() {
+        return Attributions;
+    }
+
+    public void setAttributions(String Attributions) {
+        this.Attributions = Attributions;
     }
 
     public Boolean getSaturate() {

@@ -17,9 +17,10 @@
  */
 package qcmds;
 
+import axoloti.Connection;
 import axoloti.MainFrame;
 import axoloti.Patch;
-import axoloti.SerialConnection;
+import axoloti.USBBulkConnection;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.logging.Level;
@@ -32,15 +33,14 @@ import javax.swing.SwingUtilities;
  */
 public class QCmdProcessor implements Runnable {
 
-    BlockingQueue<QCmd> queue;
-    private BlockingQueue<QCmd> queueResponse;
-    public SerialConnection serialconnection;
+    private final BlockingQueue<QCmd> queue;
+    private final BlockingQueue<QCmd> queueResponse;
+    protected Connection serialconnection;
     private Patch patch;
-    MainFrame mainframe;
-    PeriodicPinger pinger;
-    Thread pingerThread;
-    PeriodicDialTransmitter dialTransmitter;
-    Thread dialTransmitterThread;
+    private final PeriodicPinger pinger;
+    private final Thread pingerThread;
+    private final PeriodicDialTransmitter dialTransmitter;
+    private final Thread dialTransmitterThread;
 
     class PeriodicPinger implements Runnable {
 
@@ -75,17 +75,25 @@ public class QCmdProcessor implements Runnable {
             }
         }
     }
-
-    public QCmdProcessor() {
+    
+    protected QCmdProcessor() {
         queue = new ArrayBlockingQueue<QCmd>(10);
         queueResponse = new ArrayBlockingQueue<QCmd>(10);
-        serialconnection = new SerialConnection(null, queueResponse);
+        serialconnection = USBBulkConnection.GetConnection();
         pinger = new PeriodicPinger();
         pingerThread = new Thread(pinger);
         dialTransmitter = new PeriodicDialTransmitter();
         dialTransmitterThread = new Thread(dialTransmitter);
     }
 
+    private static QCmdProcessor singleton = null;
+    
+    public static QCmdProcessor getQCmdProcessor() {
+        if (singleton == null)
+            singleton = new QCmdProcessor();
+        return singleton;
+    }
+    
     public Patch getPatch() {
         return patch;
     }
@@ -98,11 +106,11 @@ public class QCmdProcessor implements Runnable {
         queue.clear();
         queueResponse.clear();
     }
-    
+
     public void Panic() {
         queue.clear();
 //        shellprocessor.Panic();
-        serialconnection.Panic();
+//        serialconnection.Panic();
     }
 
     private void publish(final QCmd cmd) {
@@ -149,7 +157,7 @@ public class QCmdProcessor implements Runnable {
                 break;
             }
             try {
-                Thread.sleep(100);
+                Thread.sleep(10);
             } catch (InterruptedException ex) {
                 Logger.getLogger(QCmdProcessor.class.getName()).log(Level.SEVERE, null, ex);
             }
@@ -187,7 +195,11 @@ public class QCmdProcessor implements Runnable {
                 if (QCmdSerialTask.class.isInstance(cmd)) {
                     if (serialconnection.isConnected()) {
                         serialconnection.AppendToQueue((QCmdSerialTask) cmd);
-                        publish(queueResponse.take());
+                        QCmd response = queueResponse.take();
+                        publish(response);
+                        if (response instanceof QCmdDisconnect){
+                            queue.clear();
+                        }
                     }
                 }
                 if (QCmdGUITask.class.isInstance(cmd)) {
@@ -206,6 +218,9 @@ public class QCmdProcessor implements Runnable {
     }
 
     public void println(final String s) {
+        if ((s == null) || s.isEmpty()) {
+            return;
+        }
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
@@ -216,9 +231,25 @@ public class QCmdProcessor implements Runnable {
 
     public void SetPatch(Patch patch) {
         if (this.patch != null) {
-            patch.Unlock();
+            this.patch.Unlock();
         }
         this.patch = patch;
-        serialconnection.setPatch(patch);
     }
+
+    public BlockingQueue<QCmd> getQueueResponse() {
+        return queueResponse;
+    }
+
+    public void ClearQueue() {
+        queue.clear();
+    }    
+
+    public boolean isQueueEmpty() {
+        return queue.isEmpty();
+    }
+    
+    public boolean hasQueueSpaceLeft() {
+        return (queue.remainingCapacity()>3);
+    }
+
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013, 2014, 2015 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -27,27 +27,40 @@ import java.util.HashSet;
 import java.util.Set;
 import org.simpleframework.xml.Attribute;
 import org.simpleframework.xml.Element;
+import org.simpleframework.xml.ElementList;
+import org.simpleframework.xml.ElementListUnion;
 import org.simpleframework.xml.Root;
+import org.simpleframework.xml.core.Commit;
+import org.simpleframework.xml.core.Persist;
 
 /**
  *
  * @author Johannes Taelman
  */
 @Root(name = "objdef")
-public class AxoObjectAbstract implements Comparable {
+public abstract class AxoObjectAbstract implements Comparable, Cloneable {
 
     @Attribute
     public String id;
 
-    public String shortId;
+    @Attribute(required = false)
+    String uuid;
 
+    @Deprecated
     @Attribute(required = false)
     String sha;
 
-    @Element
+    @Deprecated
+    @ElementListUnion({
+        @ElementList(entry = "upgradeSha", type = String.class, inline = true, required = false),})
+    HashSet<String> upgradeSha;
+
+    @Element(name = "sDescription", required = false)
     public String sDescription;
 
-    boolean createdFromRelativePath = false;
+    public String shortId;
+
+    public boolean createdFromRelativePath = false;
 
     @Element(name = "author", required = false)
     public String sAuthor;
@@ -55,12 +68,30 @@ public class AxoObjectAbstract implements Comparable {
     public String sLicense;
     public String sPath;
 
+    @Commit
+    public void Commit() {
+        // called after deserialializtion
+        this.sha = null;
+        this.upgradeSha = null;
+    }
+
+    @Persist
+    public void Persist() {
+        // called prior to serialization
+        this.sha = null;
+        this.upgradeSha = null;
+    }
+
     public AxoObjectAbstract() {
+        this.sha = null;
+        this.upgradeSha = null;
     }
 
     public AxoObjectAbstract(String id, String sDescription) {
         this.sDescription = sDescription;
         this.id = id;
+        this.sha = null;
+        this.upgradeSha = null;
     }
 
     Inlet GetInlet(String n) {
@@ -111,15 +142,11 @@ public class AxoObjectAbstract implements Comparable {
         return "noname";
     }
 
-    public String getSHA() {
-        if (sha == null) {
-            GenerateSHA();
+    public String getUUID() {
+        if (uuid == null) {
+            uuid = GenerateUUID();
         }
-        return sha;
-    }
-
-    public void GenerateSHA() {
-        sha = "sha";
+        return uuid;
     }
 
     public HashSet<String> GetIncludes() {
@@ -147,4 +174,20 @@ public class AxoObjectAbstract implements Comparable {
     public Modulator[] getModulators() {
         return null;
     }
+
+    public abstract String GenerateUUID();
+
+    public void setUUID(String uuid) {
+        this.uuid = uuid;
+    }
+
+    public void FireObjectModified(Object src) {
+    }
+
+    public void addObjectModifiedListener(ObjectModifiedListener oml) {
+    }
+
+    public void removeObjectModifiedListener(ObjectModifiedListener oml) {
+    }
+
 }

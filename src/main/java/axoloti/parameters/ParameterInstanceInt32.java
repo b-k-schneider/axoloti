@@ -18,20 +18,18 @@
 package axoloti.parameters;
 
 import axoloti.Preset;
-import axoloti.datatypes.Int32;
+import axoloti.Theme;
 import axoloti.datatypes.Value;
 import axoloti.datatypes.ValueInt32;
 import axoloti.object.AxoObjectInstance;
-import java.awt.Color;
-import javax.swing.UIManager;
 import org.simpleframework.xml.Attribute;
 
 /**
  *
  * @author Johannes Taelman
  */
-public abstract class ParameterInstanceInt32 extends ParameterInstance<Int32> {
-
+public abstract class ParameterInstanceInt32<T extends Parameter> extends ParameterInstance<T> {
+    
     final ValueInt32 value = new ValueInt32();
 
     @Attribute(name = "value", required = false)
@@ -46,7 +44,7 @@ public abstract class ParameterInstanceInt32 extends ParameterInstance<Int32> {
         value.setInt(v);
     }
 
-    public ParameterInstanceInt32(Parameter<Int32> param, AxoObjectInstance axoObj1) {
+    public ParameterInstanceInt32(T param, AxoObjectInstance axoObj1) {
         super(param, axoObj1);
     }
 
@@ -56,7 +54,7 @@ public abstract class ParameterInstanceInt32 extends ParameterInstance<Int32> {
     }
 
     @Override
-    public void setValue(Value<Int32> value) {
+    public void setValue(Value value) {
         this.value.setInt(value.getInt());
         updateV();
     }
@@ -75,9 +73,9 @@ public abstract class ParameterInstanceInt32 extends ParameterInstance<Int32> {
     public void setOnParent(Boolean b) {
         super.setOnParent(b);
         if ((b != null) && b) {
-            setForeground(Color.blue);
+            setForeground(Theme.getCurrentTheme().Parameter_On_Parent_Highlight);
         } else {
-            setForeground(Color.black);
+            setForeground(Theme.getCurrentTheme().Parameter_Default_Foreground);
         }
     }
 
@@ -87,20 +85,20 @@ public abstract class ParameterInstanceInt32 extends ParameterInstance<Int32> {
         if (i > 0) {
             Preset p = GetPreset(presetEditActive);
             if (p != null) {
-                setBackground(Color.yellow);
+                setBackground(Theme.getCurrentTheme().Paramete_Preset_Highlight);
                 getControlComponent().setValue(p.value.getDouble());
             } else {
-                setBackground(UIManager.getColor("Panel.background"));
+                setBackground(Theme.getCurrentTheme().Parameter_Default_Background);
                 getControlComponent().setValue(value.getDouble());
             }
         } else {
-            setBackground(UIManager.getColor("Panel.background"));
+            setBackground(Theme.getCurrentTheme().Parameter_Default_Background);
             getControlComponent().setValue(value.getDouble());
         }
     }
 
     @Override
-    public void handleAdjustment() {
+    public boolean handleAdjustment() {
         Preset p = GetPreset(presetEditActive);
         if (p != null) {
             p.value = new ValueInt32((int) getControlComponent().getValue());
@@ -110,7 +108,11 @@ public abstract class ParameterInstanceInt32 extends ParameterInstance<Int32> {
                 needsTransmit = true;
                 UpdateUnit();
             }
+            else {
+                return false;
+            }
         }
+        return true;
     }
 
 }

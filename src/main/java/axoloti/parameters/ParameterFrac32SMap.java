@@ -27,20 +27,18 @@ import org.simpleframework.xml.Element;
  */
 public class ParameterFrac32SMap extends ParameterFrac32 {
 
-    @Element
+    @Deprecated
+    @Element(required = false)
     ValueFrac32 MinValue;
-    @Element
+    @Deprecated
+    @Element(required = false)
     ValueFrac32 MaxValue;
 
     public ParameterFrac32SMap() {
-        MinValue = new ValueFrac32(-64);
-        MaxValue = new ValueFrac32(63.5);
     }
 
     public ParameterFrac32SMap(String name) {
         super(name);
-        MinValue = new ValueFrac32(-64);
-        MaxValue = new ValueFrac32(63.5);
     }
 
     @Override
@@ -52,5 +50,12 @@ public class ParameterFrac32SMap extends ParameterFrac32 {
     public void updateSHA(MessageDigest md) {
         super.updateSHA(md);
         md.update("frac32.s.map".getBytes());
+    }
+    
+    static public final String TypeName = "frac32.s.map";
+
+    @Override
+    public String getTypeName() {
+        return TypeName;
     }
 }

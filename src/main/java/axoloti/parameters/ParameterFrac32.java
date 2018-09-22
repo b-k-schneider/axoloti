@@ -17,15 +17,15 @@
  */
 package axoloti.parameters;
 
-import axoloti.datatypes.Frac32;
 import axoloti.datatypes.ValueFrac32;
+import java.util.List;
 import org.simpleframework.xml.Element;
 
 /**
  *
  * @author Johannes Taelman
  */
-public abstract class ParameterFrac32 extends Parameter<Frac32> {
+public abstract class ParameterFrac32<T extends ParameterInstanceFrac32> extends Parameter<T> {
 
     @Element(required = false)
     public ValueFrac32 DefaultValue;
@@ -37,4 +37,15 @@ public abstract class ParameterFrac32 extends Parameter<Frac32> {
         super(name);
     }
 
+    public ParameterFrac32(String name, ValueFrac32 DefaultValue) {
+        super(name);
+        this.DefaultValue = DefaultValue;
+    }
+
+    @Override
+    public List<String> getEditableFields() {
+        List l = super.getEditableFields();
+        l.add("DefaultValue");
+        return l;
+    }
 }

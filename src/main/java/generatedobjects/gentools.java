@@ -17,6 +17,8 @@
  */
 package generatedobjects;
 
+import axoloti.MainFrame;
+import axoloti.attributedefinition.AxoAttribute;
 import axoloti.inlets.Inlet;
 import axoloti.inlets.InletFrac32;
 import axoloti.inlets.InletFrac32Buffer;
@@ -31,6 +33,8 @@ import axoloti.outlets.OutletFrac32Buffer;
 import axoloti.outlets.OutletInt32;
 import axoloti.parameters.Parameter;
 import axoloti.parameters.ParameterFrac32UMap;
+import axoloti.utils.AxolotiLibrary;
+import axoloti.utils.Preferences;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -50,10 +54,11 @@ import org.simpleframework.xml.core.Persister;
  *
  * @author Johannes Taelman
  */
+@Deprecated
 public class gentools {
 
     static protected Serializer serializer = new Persister();
-    static String unstable = "unstable/";
+    static String unstable = "unstable";
 
     static String ConvertToLegalFilename(String s) {
         s = s.replaceAll("<", "LT");
@@ -67,22 +72,23 @@ public class gentools {
         return s;
     }
 
+    @Deprecated
     static void CheckString(AxoObject o, String s) {
         for (Parameter p : o.params) {
-            s = s.replaceAll("%" + p.name + "%", "");
-            s = s.replaceAll("_" + p.name, "");
+            s = s.replaceAll("%" + p.getName() + "%", "");
+            s = s.replaceAll("_" + p.getName(), "");
         }
         for (Inlet p : o.inlets) {
-            s = s.replaceAll("%" + p.name + "%", "");
-            s = s.replaceAll("_" + p.name, "");
+            s = s.replaceAll("%" + p.getName() + "%", "");
+            s = s.replaceAll("_" + p.getName(), "");
         }
         for (Outlet p : o.outlets) {
-            s = s.replaceAll("%" + p.name + "%", "");
-            s = s.replaceAll("_" + p.name, "");
+            s = s.replaceAll("%" + p.getName() + "%", "");
+            s = s.replaceAll("_" + p.getName(), "");
         }
-        for (displays.Display p : o.displays) {
-            s = s.replaceAll("%" + p.name + "%", "");
-            s = s.replaceAll("_" + p.name, "");
+        for (axoloti.displays.Display p : o.displays) {
+            s = s.replaceAll("%" + p.getName() + "%", "");
+            s = s.replaceAll("_" + p.getName(), "");
         }
 
         s = s.replaceAll("ntrig", "");
@@ -94,33 +100,27 @@ public class gentools {
         s = s.replaceAll("int", "");
         s = s.replaceAll("default", "");
         for (Parameter p : o.params) {
-            if (s.contains(p.name)) {
-                Logger.getLogger(axoloti.Patch.class.getName()).log(Level.SEVERE, "Object " + o.id + ": contains unmarked string " + p.name + "\n" + s);
+            if (s.contains(p.getName())) {
+                Logger.getLogger(axoloti.Patch.class.getName()).log(Level.SEVERE, "Object " + o.id + ": contains unmarked string " + p.getName() + "\n" + s);
             }
         }
         for (Inlet p : o.inlets) {
-            if (s.contains(p.name)) {
-                Logger.getLogger(axoloti.Patch.class.getName()).log(Level.SEVERE, "Object " + o.id + ": contains unmarked string " + p.name + "\n" + s);
+            if (s.contains(p.getName())) {
+                Logger.getLogger(axoloti.Patch.class.getName()).log(Level.SEVERE, "Object " + o.id + ": contains unmarked string " + p.getName() + "\n" + s);
             }
         }
         for (Outlet p : o.outlets) {
-            if (s.contains(p.name)) {
-                Logger.getLogger(axoloti.Patch.class.getName()).log(Level.SEVERE, "Object " + o.id + ": contains unmarked string " + p.name + "\n" + s);
+            if (s.contains(p.getName())) {
+                Logger.getLogger(axoloti.Patch.class.getName()).log(Level.SEVERE, "Object " + o.id + ": contains unmarked string " + p.getName() + "\n" + s);
             }
         }
 
     }
 
-    /*
-     depends tags
-     BUFSIZE=16
-     ADAU1361
-    
-     */
-    static void PostProcessObject(AxoObjectAbstract o, String prefix) {
+    static void PostProcessObject(AxoObjectAbstract o, String catname, String fn) {
+        String relativeID = o.id;
         if (o instanceof AxoObject) {
             // remove labels when there's only a single parameter
-            o.id = prefix + o.id;
             AxoObject oo = (AxoObject) o;
             if ((oo.params != null) && (oo.params.size() == 1)) {
                 oo.params.get(0).noLabel = true;
@@ -175,6 +175,25 @@ public class gentools {
                 oo.depends = null;
             }
 
+            if (oo.sInitCode != null && oo.sInitCode.isEmpty()) {
+                oo.sInitCode = null;
+            }
+            if (oo.sLocalData != null && oo.sLocalData.isEmpty()) {
+                oo.sLocalData = null;
+            }
+            if (oo.sKRateCode != null && oo.sKRateCode.isEmpty()) {
+                oo.sKRateCode = null;
+            }
+            if (oo.sSRateCode != null && oo.sSRateCode.isEmpty()) {
+                oo.sSRateCode = null;
+            }
+            if (oo.sDisposeCode != null && oo.sDisposeCode.isEmpty()) {
+                oo.sDisposeCode = null;
+            }
+            if (oo.sMidiCode != null && oo.sMidiCode.isEmpty()) {
+                oo.sMidiCode = null;
+            }
+
             /*
              if (oo.sKRateCode!=null)
              CheckString(oo,oo.sKRateCode);
@@ -194,37 +213,163 @@ public class gentools {
         if ((o.GetIncludes() != null) && o.GetIncludes().isEmpty()) {
             o.SetIncludes(null);
         }
-        o.GenerateSHA();
+        o.id = catname + "/" + relativeID; // uuid based on full name
+//        String upgradeSha = o.GenerateSHA();
+        o.getUUID();
+        o.id = relativeID;
+        if (o instanceof AxoObject) {
+            // remove labels when there's only a single parameter
+            AxoObject oo = (AxoObject) o;
+            for (Parameter p : oo.params) {
+                if (oo.sKRateCode != null) {
+                    oo.sKRateCode = oo.sKRateCode.replaceAll("%" + p.name + "%", p.GetCName());
+                }
+                if (oo.sSRateCode != null) {
+                    oo.sSRateCode = oo.sSRateCode.replaceAll("%" + p.name + "%", p.GetCName());
+                }
+            }
+            for (AxoAttribute p : oo.attributes) {
+                if (oo.sInitCode != null) {
+                    oo.sInitCode = oo.sInitCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sDisposeCode != null) {
+                    oo.sDisposeCode = oo.sDisposeCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sLocalData != null) {
+                    oo.sLocalData = oo.sLocalData.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sMidiCode != null) {
+                    oo.sMidiCode = oo.sMidiCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sKRateCode != null) {
+                    oo.sKRateCode = oo.sKRateCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sSRateCode != null) {
+                    oo.sSRateCode = oo.sSRateCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+            }
+            for (Inlet p : oo.inlets) {
+                if (oo.sKRateCode != null) {
+                    oo.sKRateCode = oo.sKRateCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sSRateCode != null) {
+                    oo.sSRateCode = oo.sSRateCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+            }
+            for (Outlet p : oo.outlets) {
+                if (oo.sKRateCode != null) {
+                    oo.sKRateCode = oo.sKRateCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sSRateCode != null) {
+                    oo.sSRateCode = oo.sSRateCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+            }
+            for (axoloti.displays.Display p : oo.displays) {
+                if (oo.sInitCode != null) {
+                    oo.sInitCode = oo.sInitCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+                if (oo.sKRateCode != null) {
+                    oo.sKRateCode = oo.sKRateCode.replaceAll("%" + p.getName() + "%", p.GetCName());
+                }
+            }
+            if (oo.sInitCode != null) {
+                oo.sInitCode = oo.sInitCode.replaceAll("%midichannel%", "attr_midichannel");
+            }
+            if (oo.sKRateCode != null) {
+                oo.sKRateCode = oo.sKRateCode.replaceAll("%midichannel%", "attr_midichannel");
+            }
+            if (oo.sSRateCode != null) {
+                oo.sSRateCode = oo.sSRateCode.replaceAll("%midichannel%", "attr_midichannel");
+            }
+            if (oo.sMidiCode != null) {
+                oo.sMidiCode = oo.sMidiCode.replaceAll("%midichannel%", "attr_midichannel");
+            }
+            if (oo.sDisposeCode != null) {
+                oo.sDisposeCode = oo.sDisposeCode.replaceAll("%midichannel%", "attr_midichannel");
+            }
+
+            if (oo.helpPatch == null) {
+                File f = new File(getObjDir() + catname + "/" + fn + ".axh");
+                if (f.exists()) {
+                    oo.helpPatch = fn + ".axh";
+                } else {
+                    String fcatname = catname.replaceAll("/", "_");
+                    File fcat = new File(getObjDir() + catname + "/" + fcatname + ".axh");
+                    if (fcat.exists()) {
+                        oo.helpPatch = fcatname + ".axh";
+                    }
+                }
+            }
+        }
+
+//        String sha = o.GenerateSHA();
+//        o.setSHA(sha);
+//        if ((upgradeSha != null) && (!upgradeSha.equals(sha))) {
+//            o.addUpgradeSHA(upgradeSha);
+//        }
     }
 
     static public void WriteAxoObject(String path, AxoObjectAbstract o) {
-        String fn = ConvertToLegalFilename(o.id);
+        File f;
+        String fn;
+        if (!path.endsWith(".axo")) {
+            fn = ConvertToLegalFilename(o.id);
 
-        int i = fn.lastIndexOf('.');
-        if (i > 0) {
-            path = path + "." + fn.substring(0, i);
-            fn = fn.substring(i);
+            int i = fn.lastIndexOf('.');
+            if (i > 0) {
+                path = path + "." + fn.substring(0, i);
+                fn = fn.substring(i);
+            }
+            path = path.replace('\\', '/');
+            fn = fn.replace('\\', '/');
+
+            o.id = o.id.replace('\\', '/');
+            i = o.id.lastIndexOf('/');
+            if (i > 0) {
+                o.id = o.id.substring(i + 1);
+            }
+
+            File fd = new File(getObjDir() + path);
+            if (!fd.isDirectory()) {
+                fd.mkdirs();
+            }
+            f = new File(getObjDir() + path + "/" + fn + ".axo");
+        } else {
+            f = new File(path);
+            fn = f.getName();
+            String objPath = null;
+            for (String s : Preferences.LoadPreferences().getObjectSearchPath()) {
+                if (path.startsWith(s)) {
+                    objPath = path.substring(s.length() + 1);
+                    break;
+                }
+                File f2 = new File(s);
+                String s2 = f2.getAbsolutePath();
+                if (path.startsWith(s2)) {
+                    objPath = path.substring(s2.length() + 1);
+                    break;
+                }
+            }
+            if (objPath != null) {
+                fn = fn.replace('\\', '/');
+                int ii = fn.lastIndexOf('/');
+                if (ii < 0) {
+                    ii = 0;
+                }
+                fn = fn.substring(ii, fn.length() - 4);
+                objPath = objPath.replace('\\', '/');
+                //System.out.printf("1 path %s objPath %s\n", path, objPath);
+                path = objPath.substring(0, objPath.lastIndexOf('/'));
+                //fn = objPath.substring(0,fn.length()-4);                
+                System.out.printf("2 path %s objPath %s fn %s\n", path, objPath, fn);
+                o.id = o.id.substring(o.id.lastIndexOf('/') + 1);
+            }
         }
-        path = path.replaceAll("\\.", "/");
-        fn = fn.replaceAll("\\.", "/");
-
-        o.id = o.id.replaceAll("\\.", "/");
-        i = o.id.lastIndexOf('/');
-        if (i > 0) {
-            o.id = o.id.substring(i + 1);
-        }
-
-        File fd = new File("objects/" + path);
-        if (!fd.isDirectory()) {
-            fd.mkdirs();
-        }
-
-        File f = new File("objects/" + path + "/" + fn + ".axo");
         AxoObjectFile a = new AxoObjectFile();
         a.objs = new ArrayList<AxoObjectAbstract>();
         a.objs.add(o);
         for (AxoObjectAbstract oa : a.objs) {
-            PostProcessObject(oa, "");
+            PostProcessObject(oa, path, fn);
         }
         if (f.exists()) {
             ByteArrayOutputStream os = new ByteArrayOutputStream(2048);
@@ -265,7 +410,7 @@ public class gentools {
                 // overwrite with new
                 try {
                     System.out.println("object file changed : " + f.getName());
-                    File f2 = new File("objects/" + path + "/" + fn + ".axo");
+                    File f2 = new File(getObjDir() + path + "/" + fn + ".axo");
                     serializer.write(a, f2);
                 } catch (Exception ex) {
                     Logger.getLogger(GeneratedObjects.class.getName()).log(Level.SEVERE, null, ex);
@@ -297,23 +442,23 @@ public class gentools {
             path = path + "." + fn.substring(0, i);
             fn = fn.substring(i);
         }
-        path = path.replaceAll("\\.", "/");
-        fn = fn.replaceAll("\\.", "/");
+        path = path.replace('\\', '/');
+        fn = fn.replace('\\', '/');
 
-        File fd = new File("objects/" + path);
+        File fd = new File(getObjDir() + path);
         if (!fd.isDirectory()) {
             fd.mkdirs();
         }
-        File f = new File("objects/" + path + "/" + fn + ".axo");
+        File f = new File(getObjDir() + path + "/" + fn + ".axo");
         AxoObjectFile a = new AxoObjectFile();
         a.objs = o;
         for (AxoObjectAbstract oa : a.objs) {
-            oa.id = oa.id.replaceAll("\\.", "/");
+            oa.id = oa.id.replace('\\', '/');
             i = oa.id.lastIndexOf('/');
             if (i > 0) {
                 oa.id = oa.id.substring(i + 1);
             }
-            PostProcessObject(oa, "");
+            PostProcessObject(oa, path, fn);
         }
 
         if (f.exists()) {
@@ -355,7 +500,7 @@ public class gentools {
                 // overwrite with new
                 try {
                     System.out.println("object file changed : " + f.getName());
-                    File f2 = new File("objects/" + path + "/" + fn + ".axo");
+                    File f2 = new File(getObjDir() + path + "/" + fn + ".axo");
                     serializer.write(a, f2);
                 } catch (Exception ex) {
                     Logger.getLogger(GeneratedObjects.class.getName()).log(Level.SEVERE, null, ex);
@@ -566,5 +711,14 @@ public class gentools {
         o_s.sSRateCode = "%out%= " + op_prefix + "%in%" + op_suffix + ";";
         a.add(o_s);
         return a;
+    }
+
+    static String getObjDir() {
+        AxolotiLibrary lib = MainFrame.prefs.getLibrary(AxolotiLibrary.FACTORY_ID);
+        String objdir = "objects/";
+        if (lib != null) {
+            objdir = lib.getLocalLocation() + objdir;
+        }
+        return objdir;
     }
 }

@@ -34,18 +34,23 @@ public class InletInstanceZombie extends InletInstance {
 
     public InletInstanceZombie(AxoObjectInstanceZombie obj, String name) {
         this.axoObj = obj;
-        this.name = name;
+        this.inletname = name;
+        this.objname = obj.getInstanceName();
         setLayout(new BoxLayout(this, BoxLayout.LINE_AXIS));
         jack = new components.JackInputComponent(this);
         add(jack);
         add(Box.createHorizontalStrut(2));
-        add(new LabelComponent(this.name));
+        add(new LabelComponent(this.inletname));
         add(Box.createHorizontalGlue());
-        setComponentPopupMenu(popup);
     }
 
     @Override
     public DataType GetDataType() {
         return new axoloti.datatypes.DTZombie();
+    }
+
+    @Override
+    public String GetLabel() {
+        return inletname;
     }
 }

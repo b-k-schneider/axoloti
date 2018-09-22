@@ -58,4 +58,9 @@ public class AxoObjectZombie extends AxoObjectAbstract {
         return o;
     }
 
+    @Override
+    public String GenerateUUID() {
+        return "zombie";
+    }
+
 }

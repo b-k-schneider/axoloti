@@ -17,6 +17,7 @@
  */
 package axoloti.datatypes;
 
+import axoloti.Theme;
 import java.awt.Color;
 
 /**
@@ -35,10 +36,7 @@ public class Bool32 implements DataType {
         if (Int32.d.equals(dest)) {
             return true;
         }
-        if (Frac32.d.equals(dest)) {
-            return true;
-        }
-        return false;
+        return Frac32.d.equals(dest);
     }
 
     @Override
@@ -57,12 +55,12 @@ public class Bool32 implements DataType {
 
     @Override
     public String CType() {
-        return "int32_t ";
+        return "bool ";
     }
 
     @Override
     public Color GetColor() {
-        return Color.yellow;
+        return Theme.getCurrentTheme().Cable_Bool32;
     }
 
     @Override
@@ -89,5 +87,15 @@ public class Bool32 implements DataType {
     public int hashCode() {
         int hash = 7;
         return hash;
+    }
+
+    @Override
+    public boolean isPointer() {
+        return false;
+    }
+
+    @Override
+    public String UnconnectedSink() {
+        return "(bool &)UNCONNECTED_OUTPUT";
     }
 }

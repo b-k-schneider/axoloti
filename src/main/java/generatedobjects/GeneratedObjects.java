@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013, 2014, 2015 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -17,11 +17,11 @@
  */
 package generatedobjects;
 
-import axoloti.outlets.*;
-import axoloti.inlets.*;
 import axoloti.attributedefinition.*;
+import axoloti.inlets.*;
 import axoloti.object.AxoObject;
 import axoloti.object.AxoObjectAbstract;
+import axoloti.outlets.*;
 import axoloti.parameters.*;
 import static generatedobjects.gentools.WriteAxoObject;
 import java.util.ArrayList;
@@ -30,11 +30,13 @@ import java.util.ArrayList;
  *
  * @author Johannes Taelman
  */
+@Deprecated
 public class GeneratedObjects extends gentools {
 
     static public void WriteAxoObjects() {
 
         Arithmetic.GenerateAll();
+        Demux.GenerateAll();
         Constant.GenerateAll();
         Control.GenerateAll();
         Convert.GenerateAll();
@@ -68,6 +70,7 @@ public class GeneratedObjects extends gentools {
         LTC.GenerateAll();
         Spat.GenerateAll();
         USB.GenerateAll();
+        Harmony.GenerateAll();
 
         {
             ArrayList<AxoObjectAbstract> c = new ArrayList<AxoObjectAbstract>();
@@ -100,7 +103,7 @@ public class GeneratedObjects extends gentools {
 
         WriteAxoObject("math", Create_glide());
 
-        WriteAxoObject(unstable, Create_testanno());
+//        WriteAxoObject(unstable, Create_testanno());
 
 //        objs.add(Create_FlashTableGranularPlay());
         //WriteAxoObject("util",modsource());
@@ -231,7 +234,7 @@ public class GeneratedObjects extends gentools {
                 + "}\n"
                 + "else if (!(%inc%>0)) ntrig=0;\n"
                 + "if ((%dec%>0) && !dtrig) {\n"
-                + "   count--; if (count<0) {count = %maximum%; %c% = 1;}\n"
+                + "   count--; if (count<0) {count = %maximum%-1; %c% = 1;}\n"
                 + "   dtrig=1;\n"
                 + "}\n"
                 + "else if (!(%dec%>0)) dtrig=0;\n"

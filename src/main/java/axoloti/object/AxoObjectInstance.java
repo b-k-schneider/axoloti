@@ -20,11 +20,17 @@ package axoloti.object;
 import axoloti.MainFrame;
 import axoloti.Net;
 import axoloti.Patch;
+import axoloti.PatchFrame;
 import axoloti.PatchGUI;
+import axoloti.SDFileReference;
+import axoloti.Synonyms;
+import axoloti.Theme;
 import axoloti.attribute.*;
 import axoloti.attributedefinition.AxoAttribute;
 import axoloti.datatypes.DataType;
-import axoloti.datatypes.DataTypeBuffer;
+import axoloti.datatypes.Frac32buffer;
+import axoloti.displays.Display;
+import axoloti.displays.DisplayInstance;
 import axoloti.inlets.Inlet;
 import axoloti.inlets.InletInstance;
 import axoloti.outlets.Outlet;
@@ -32,29 +38,31 @@ import axoloti.outlets.OutletInstance;
 import axoloti.parameters.*;
 import components.LabelComponent;
 import components.PopupIcon;
-import displays.Display;
-import displays.DisplayInstance;
 import static java.awt.Component.LEFT_ALIGNMENT;
-import java.awt.MenuItem;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import org.simpleframework.xml.*;
+import org.simpleframework.xml.core.Persist;
 
 /**
  *
  * @author Johannes Taelman
  */
 @Root(name = "obj")
-public class AxoObjectInstance extends AxoObjectInstanceAbstract {
+public class AxoObjectInstance extends AxoObjectInstanceAbstract implements ObjectModifiedListener {
 
     public ArrayList<InletInstance> inletInstances;
     public ArrayList<OutletInstance> outletInstances;
@@ -69,6 +77,7 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         @ElementList(entry = "int32.hradio", type = ParameterInstanceInt32HRadio.class, inline = true, required = false),
         @ElementList(entry = "int32.vradio", type = ParameterInstanceInt32VRadio.class, inline = true, required = false),
         @ElementList(entry = "int2x16", type = ParameterInstance4LevelX16.class, inline = true, required = false),
+        @ElementList(entry = "bin12", type = ParameterInstanceBin12.class, inline = true, required = false),
         @ElementList(entry = "bin16", type = ParameterInstanceBin16.class, inline = true, required = false),
         @ElementList(entry = "bin32", type = ParameterInstanceBin32.class, inline = true, required = false),
         @ElementList(entry = "bool32.tgl", type = ParameterInstanceBin1.class, inline = true, required = false),
@@ -81,15 +90,17 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         @ElementList(entry = "combo", type = AttributeInstanceComboBox.class, inline = true, required = false),
         @ElementList(entry = "int", type = AttributeInstanceInt32.class, inline = true, required = false),
         @ElementList(entry = "spinner", type = AttributeInstanceSpinner.class, inline = true, required = false),
-        @ElementList(entry = "file", type = AttributeInstanceWavefile.class, inline = true, required = false),
+        @ElementList(entry = "file", type = AttributeInstanceSDFile.class, inline = true, required = false),
         @ElementList(entry = "text", type = AttributeInstanceTextEditor.class, inline = true, required = false)})
-    ArrayList<AttributeInstance> attributeInstances;
+    public ArrayList<AttributeInstance> attributeInstances;
     public ArrayList<DisplayInstance> displayInstances;
     LabelComponent IndexLabel;
 
+    boolean deferredObjTypeUpdate = false;
+
     @Override
     public void refreshIndex() {
-        if (patch != null) {
+        if (patch != null && IndexLabel != null) {
             IndexLabel.setText(" " + patch.objectinstances.indexOf(this));
         }
     }
@@ -103,91 +114,77 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
     public ArrayList<AttributeInstance> getAttributeInstances() {
         return attributeInstances;
     }
-    public JPanel p_params;
-    public JPanel p_displays;
+
+    public final JPanel p_params = new JPanel();
+    public final JPanel p_displays = new JPanel();
+    public final JPanel p_iolets = new JPanel();
+    public final JPanel p_inlets = new JPanel();
+    public final JPanel p_outlets = new JPanel();
+
+    void updateObj1() {
+        getType().addObjectModifiedListener(this);
+    }
 
     @Override
     public void PostConstructor() {
         super.PostConstructor();
-        if (this instanceof AxoObjectInstancePatcher) {
-            ((AxoObjectInstancePatcher) this).updateObj1();
-        }
-        if (parameterInstances == null) {
-            parameterInstances = new ArrayList<ParameterInstance>();
-        }
-        if (attributeInstances == null) {
-            attributeInstances = new ArrayList<AttributeInstance>();
-        }
-        if (displayInstances == null) {
-            displayInstances = new ArrayList<DisplayInstance>();
-        }
-        if (inletInstances == null) {
-            inletInstances = new ArrayList<InletInstance>();
-        }
-        if (outletInstances == null) {
-            outletInstances = new ArrayList<OutletInstance>();
-        }
+        updateObj1();
+        ArrayList<ParameterInstance> pParameterInstances = parameterInstances;
+        ArrayList<AttributeInstance> pAttributeInstances = attributeInstances;
+        ArrayList<InletInstance> pInletInstances = inletInstances;
+        ArrayList<OutletInstance> pOutletInstances = outletInstances;
+        parameterInstances = new ArrayList<ParameterInstance>();
+        attributeInstances = new ArrayList<AttributeInstance>();
+        displayInstances = new ArrayList<DisplayInstance>();
+        inletInstances = new ArrayList<InletInstance>();
+        outletInstances = new ArrayList<OutletInstance>();
+
         setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
-
         final PopupIcon popupIcon = new PopupIcon();
-        popupIcon.setPopupIconListener(
-                new PopupIcon.PopupIconListener() {
-                    @Override
-                    public void ShowPopup() {
-                        if (popup.getParent() == null) {
-                            popupIcon.add(popup);
-                        }
-                        popup.show(popupIcon,
-                                0, popupIcon.getHeight());
-                    }
-                });
+        popupIcon.setPopupIconListener(new PopupIcon.PopupIconListener() {
+            @Override
+            public void ShowPopup() {
+                JPopupMenu popup = CreatePopupMenu();
+                popupIcon.add(popup);
+                popup.show(popupIcon,
+                        0, popupIcon.getHeight());
+            }
+        });
+        popupIcon.setAlignmentX(LEFT_ALIGNMENT);
         Titlebar.add(popupIcon);
-
         LabelComponent idlbl = new LabelComponent(typeName);
+        idlbl.setForeground(Theme.getCurrentTheme().Object_TitleBar_Foreground);
         idlbl.setAlignmentX(LEFT_ALIGNMENT);
         Titlebar.add(idlbl);
 
-        Titlebar.setToolTipText("<html>" + getType().sDescription
-                + "<p>Author: " + getType().sAuthor
-                + "<p>License: " + getType().sLicense
-                + "<p>Path: " + getType().sPath);
-        MenuItem popm_edit = new MenuItem("edit object definition");
-        popm_edit.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent ae) {
-                getType().OpenEditor();
-            }
-        });
-        popup.add(popm_edit);
-        MenuItem popm_editInstanceName = new MenuItem("edit instance name");
-        popm_editInstanceName.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent ae) {
-                addInstanceNameEditor();
-            }
-        });
-        popup.add(popm_editInstanceName);
-        MenuItem popm_substitute = new MenuItem("substitute");
-        popm_substitute.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent ae) {
-                ((PatchGUI) patch).ShowClassSelector(AxoObjectInstance.this.getLocation(), AxoObjectInstance.this);
-            }
-        });
-        popup.add(popm_substitute);
+        String tooltiptxt = "<html>";
+        if ((getType().sDescription != null) && (!getType().sDescription.isEmpty())) {
+            tooltiptxt += getType().sDescription;
+        }
+        if ((getType().sAuthor != null) && (!getType().sAuthor.isEmpty())) {
+            tooltiptxt += "<p>Author: " + getType().sAuthor;
+        }
+        if ((getType().sLicense != null) && (!getType().sLicense.isEmpty())) {
+            tooltiptxt += "<p>License: " + getType().sLicense;
+        }
+        if ((getType().sPath != null) && (!getType().sPath.isEmpty())) {
+            tooltiptxt += "<p>Path: " + getType().sPath;
+        }
+        Titlebar.setToolTipText(tooltiptxt);
+
 
         /*
          h.add(Box.createHorizontalStrut(3));
          h.add(Box.createHorizontalGlue());
          h.add(new JSeparator(SwingConstants.VERTICAL));*/
-//        IndexLabel.setSize(IndexLabel.getMinimumSize());
-        IndexLabel = new LabelComponent("");
-        refreshIndex();
+        ////IndexLabel not shown, maybe useful later...
+        //IndexLabel.setSize(IndexLabel.getMinimumSize());
+        //IndexLabel = new LabelComponent("");
+        //refreshIndex();
         //h.add(IndexLabel);
         //IndexLabel.setAlignmentX(RIGHT_ALIGNMENT);
         Titlebar.setAlignmentX(LEFT_ALIGNMENT);
         add(Titlebar);
-        Titlebar.doLayout();
         InstanceLabel = new LabelComponent(getInstanceName());
         InstanceLabel.setAlignmentX(LEFT_ALIGNMENT);
         InstanceLabel.addMouseListener(new MouseListener() {
@@ -217,22 +214,19 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         });
         add(InstanceLabel);
 
-        JPanel p_iolets = new JPanel();
-        p_iolets.setLayout(new BoxLayout(p_iolets, BoxLayout.LINE_AXIS));
-        p_iolets.setAlignmentX(LEFT_ALIGNMENT);
-        JPanel p_inlets = new JPanel();
-        p_inlets.setLayout(new BoxLayout(p_inlets, BoxLayout.PAGE_AXIS));
-        p_inlets.setAlignmentX(LEFT_ALIGNMENT);
-        JPanel p_outlets = new JPanel();
-        p_outlets.setLayout(new BoxLayout(p_outlets, BoxLayout.PAGE_AXIS));
-        p_outlets.setAlignmentX(RIGHT_ALIGNMENT);
-        p_params = new JPanel();
+        p_iolets.removeAll();
+        p_inlets.removeAll();
+        p_outlets.removeAll();
+        p_params.removeAll();
+
         if (getType().getRotatedParams()) {
             p_params.setLayout(new BoxLayout(p_params, BoxLayout.LINE_AXIS));
         } else {
             p_params.setLayout(new BoxLayout(p_params, BoxLayout.PAGE_AXIS));
         }
-        p_displays = new JPanel();
+
+        p_displays.removeAll();
+
         if (getType().getRotatedParams()) {
             p_displays.setLayout(new BoxLayout(p_displays, BoxLayout.LINE_AXIS));
         } else {
@@ -241,109 +235,219 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         p_displays.add(Box.createHorizontalGlue());
         p_params.add(Box.createHorizontalGlue());
 
-//        inletInstances = new ArrayList<InletInstance>();
-//        outletInstances =
         for (Inlet inl : getType().inlets) {
-            InletInstance inlin = GetInletInstance(inl.name);
-            if (inlin == null) {
-                inlin = new InletInstance(inl, this);
-                inletInstances.add(inlin);
+            InletInstance inlinp = null;
+            for (InletInstance inlin1 : pInletInstances) {
+                if (inlin1.GetLabel().equals(inl.getName())) {
+                    inlinp = inlin1;
+                }
             }
+            InletInstance inlin = new InletInstance(inl, this);
+            if (inlinp != null) {
+                Net n = getPatch().GetNet(inlinp);
+                if (n != null) {
+                    n.connectInlet(inlin);
+                }
+            }
+            inletInstances.add(inlin);
             inlin.setAlignmentX(LEFT_ALIGNMENT);
             p_inlets.add(inlin);
         }
+        // disconnect stale inlets from nets
+        for (InletInstance inlin1 : pInletInstances) {
+            getPatch().disconnect(inlin1);
+        }
 
         for (Outlet o : getType().outlets) {
-            OutletInstance oin = GetOutletInstance(o.name);
-            if (oin == null) {
-                oin = new OutletInstance(o, this);
-                outletInstances.add(oin);
+            OutletInstance oinp = null;
+            for (OutletInstance oinp1 : pOutletInstances) {
+                if (oinp1.GetLabel().equals(o.getName())) {
+                    oinp = oinp1;
+                }
             }
+            OutletInstance oin = new OutletInstance(o, this);
+            if (oinp != null) {
+                Net n = getPatch().GetNet(oinp);
+                if (n != null) {
+                    n.connectOutlet(oin);
+                }
+            }
+            outletInstances.add(oin);
             oin.setAlignmentX(RIGHT_ALIGNMENT);
             p_outlets.add(oin);
-        }/*
+        }
+        // disconnect stale outlets from nets
+        for (OutletInstance oinp1 : pOutletInstances) {
+            getPatch().disconnect(oinp1);
+        }
+
+        /*
          if (p_inlets.getComponents().length == 0){
          p_inlets.add(Box.createHorizontalGlue());
          }
          if (p_outlets.getComponents().length == 0){
          p_outlets.add(Box.createHorizontalGlue());
          }*/
-
         p_iolets.add(p_inlets);
         p_iolets.add(Box.createHorizontalGlue());
         p_iolets.add(p_outlets);
         add(p_iolets);
-//        p_iolets.setBackground(Color.red);
 
         for (AxoAttribute p : getType().attributes) {
-            AttributeInstance attri = p.CreateInstance(this);
+            AttributeInstance attrp1 = null;
+            for (AttributeInstance attrp : pAttributeInstances) {
+                if (attrp.getName().equals(p.getName())) {
+                    attrp1 = attrp;
+                }
+            }
+            AttributeInstance attri = p.CreateInstance(this, attrp1);
             attri.setAlignmentX(LEFT_ALIGNMENT);
             add(attri);
-            attri.doLayout();
             attributeInstances.add(attri);
         }
 
         for (Parameter p : getType().params) {
             ParameterInstance pin = p.CreateInstance(this);
+            for (ParameterInstance pinp : pParameterInstances) {
+                if (pinp.getName().equals(pin.getName())) {
+                    pin.CopyValueFrom(pinp);
+                }
+            }
+            pin.PostConstructor();
             pin.setAlignmentX(RIGHT_ALIGNMENT);
-            pin.doLayout();
             parameterInstances.add(pin);
         }
-        boolean cont;
-        do {
-            cont = false;
-            for (ParameterInstance pi : parameterInstances) {
-                if (pi.axoObj == null) {
-                    parameterInstances.remove(pi);
-                    Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.SEVERE, "Unresolved parameter " + getInstanceName() + ":" + pi.name);
-                    cont = true;
-                    break;
-                }
-            }
-        } while (cont);
-        do {
-            cont = false;
-            for (AttributeInstance pi : attributeInstances) {
-                if (pi.axoObj == null) {
-                    attributeInstances.remove(pi);
-                    Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.SEVERE, "Unresolved attribute " + getInstanceName() + ":" + pi.getAttributeName());
-                    cont = true;
-                    break;
-                }
-            }
-        } while (cont);
 
         for (Display p : getType().displays) {
-            System.out.println(p.toString());
             DisplayInstance pin = p.CreateInstance(this);
             pin.setAlignmentX(RIGHT_ALIGNMENT);
-            pin.doLayout();
             displayInstances.add(pin);
         }
 //        p_displays.add(Box.createHorizontalGlue());
 //        p_params.add(Box.createHorizontalGlue());
         add(p_params);
         add(p_displays);
-        p_params.setAlignmentX(LEFT_ALIGNMENT);
-        p_displays.setAlignmentX(LEFT_ALIGNMENT);
+
+        getType().addObjectModifiedListener(this);
+
+        synchronized (getTreeLock()) {
+            validateTree();
+        }
+        setLocation(x, y);
         resizeToGrid();
     }
 
-    public AxoObjectInstance() {
+    @Override
+    JPopupMenu CreatePopupMenu() {
+        JPopupMenu popup = super.CreatePopupMenu();
+        JMenuItem popm_edit = new JMenuItem("edit object definition");
+        popm_edit.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+                OpenEditor();
+            }
+        });
+        popup.add(popm_edit);
+        JMenuItem popm_editInstanceName = new JMenuItem("edit instance name");
+        popm_editInstanceName.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+                addInstanceNameEditor();
+            }
+        });
+        popup.add(popm_editInstanceName);
+        JMenuItem popm_substitute = new JMenuItem("replace");
+        popm_substitute.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+                ((PatchGUI) patch).ShowClassSelector(AxoObjectInstance.this.getLocation(), AxoObjectInstance.this, null);
+            }
+        });
+        popup.add(popm_substitute);
+        if (getType().GetHelpPatchFile() != null) {
+            JMenuItem popm_help = new JMenuItem("help");
+            popm_help.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+                    PatchGUI.OpenPatch(getType().GetHelpPatchFile());
+                }
+            });
+            popup.add(popm_help);
+        }
+        if (MainFrame.prefs.getExpertMode()) {
+            JMenuItem popm_adapt = new JMenuItem("adapt homonym");
+            popm_adapt.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+                    PromoteToOverloadedObj();
+                }
+            });
+            popup.add(popm_adapt);
+        }
+
+        if (type instanceof AxoObjectFromPatch) {
+            JMenuItem popm_embed = new JMenuItem("embed as patch/patcher");
+            popm_embed.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+                    ConvertToPatchPatcher();
+                }
+            });
+            popup.add(popm_embed);
+        } else if (!(this instanceof AxoObjectInstancePatcherObject)) {
+            JMenuItem popm_embed = new JMenuItem("embed as patch/object");
+            popm_embed.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+                    ConvertToEmbeddedObj();
+                }
+            });
+            popup.add(popm_embed);
+        }
+        return popup;
+    }
+
+    final void init1() {
         inletInstances = new ArrayList<InletInstance>();
         outletInstances = new ArrayList<OutletInstance>();
         displayInstances = new ArrayList<DisplayInstance>();
         parameterInstances = new ArrayList<ParameterInstance>();
         attributeInstances = new ArrayList<AttributeInstance>();
+
+        p_iolets.setBackground(Theme.getCurrentTheme().Object_Default_Background);
+        p_iolets.setLayout(new BoxLayout(p_iolets, BoxLayout.LINE_AXIS));
+        p_iolets.setAlignmentX(LEFT_ALIGNMENT);
+        p_iolets.setAlignmentY(TOP_ALIGNMENT);
+
+        p_inlets.setBackground(Theme.getCurrentTheme().Object_Default_Background);
+        p_inlets.setLayout(new BoxLayout(p_inlets, BoxLayout.PAGE_AXIS));
+        p_inlets.setAlignmentX(LEFT_ALIGNMENT);
+        p_inlets.setAlignmentY(TOP_ALIGNMENT);
+
+        p_outlets.setBackground(Theme.getCurrentTheme().Object_Default_Background);
+        p_outlets.setLayout(new BoxLayout(p_outlets, BoxLayout.PAGE_AXIS));
+        p_outlets.setAlignmentX(RIGHT_ALIGNMENT);
+        p_outlets.setAlignmentY(TOP_ALIGNMENT);
+
+        p_params.setBackground(Theme.getCurrentTheme().Object_Default_Background);
+        p_params.setAlignmentX(LEFT_ALIGNMENT);
+
+        p_displays.setBackground(Theme.getCurrentTheme().Object_Default_Background);
+        p_displays.setAlignmentX(LEFT_ALIGNMENT);
+    }
+
+    public AxoObjectInstance() {
+        super();
+        init1();
     }
 
     public AxoObjectInstance(AxoObject type, Patch patch1, String InstanceName1, Point location) {
         super(type, patch1, InstanceName1, location);
-        inletInstances = new ArrayList<InletInstance>();
-        outletInstances = new ArrayList<OutletInstance>();
-        displayInstances = new ArrayList<DisplayInstance>();
-        parameterInstances = new ArrayList<ParameterInstance>();
-        attributeInstances = new ArrayList<AttributeInstance>();
+        init1();
+    }
+
+    public void OpenEditor() {
+        getType().OpenEditor(editorBounds, editorActiveTabIndex);
     }
 
     @Override
@@ -364,6 +468,12 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
                 return o;
             }
         }
+        for (InletInstance o : inletInstances) {
+            String s = Synonyms.instance().inlet(n);
+            if (o.GetLabel().equals(s)) {
+                return o;
+            }
+        }
         return null;
     }
 
@@ -371,6 +481,12 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
     public OutletInstance GetOutletInstance(String n) {
         for (OutletInstance o : outletInstances) {
             if (n.equals(o.GetLabel())) {
+                return o;
+            }
+        }
+        for (OutletInstance o : outletInstances) {
+            String s = Synonyms.instance().outlet(n);
+            if (o.GetLabel().equals(s)) {
                 return o;
             }
         }
@@ -394,11 +510,20 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         }
     }
 
+    public void updateObj() {
+        getPatch().ChangeObjectInstanceType(this, this.getType());
+        getPatch().cleanUpIntermediateChangeStates(3);
+    }
+
     @Override
     public void Unlock() {
         super.Unlock();
         for (AttributeInstance a : attributeInstances) {
             a.UnLock();
+        }
+        if (deferredObjTypeUpdate) {
+            updateObj();
+            deferredObjTypeUpdate = false;
         }
     }
 
@@ -417,8 +542,7 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         String c = "";
         if (getType().sLocalData != null) {
             String s = getType().sLocalData;
-            s = s.replace("%name%", getCInstanceName());
-            s = s.replace("%parent%", getCInstanceName());
+            s = s.replaceAll("attr_parent", getCInstanceName());
             c += s + "\n";
         }
         return c;
@@ -432,10 +556,7 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         if (getType().sLocalData == null) {
             return false;
         }
-        if (getType().sLocalData.length() == 0) {
-            return false;
-        }
-        return true;
+        return getType().sLocalData.length() != 0;
     }
 
     @Override
@@ -443,10 +564,7 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         if (getType().sInitCode == null) {
             return false;
         }
-        if (getType().sInitCode.length() == 0) {
-            return false;
-        }
-        return true;
+        return getType().sInitCode.length() != 0;
     }
 
     public String GenerateInstanceCodePlusPlus(String classname, boolean enableOnParent) {
@@ -457,17 +575,9 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         c += GenerateInstanceDataDeclaration2();
         for (AttributeInstance p : attributeInstances) {
             if (p.CValue() != null) {
-                c = c.replace("%" + p.getAttributeName() + "%", p.CValue());
+                c = c.replaceAll(p.GetCName(), p.CValue());
             }
         }
-        for (ParameterInstance p : parameterInstances) {
-            c = c.replace("%" + p.name + "%", p.variableName("", enableOnParent));
-        }
-        for (DisplayInstance p : displayInstances) {
-            c = c.replace("%" + p.name + "%", p.valueName(""));
-        }
-        c = c.replace("%name%", getCInstanceName());
-        c = c.replace("%class%", classname);
         return c;
     }
 
@@ -478,11 +588,26 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
 //            c = "  void " + GenerateInitFunctionName() + "(" + GenerateStructName() + " * x ) {\n";
 //        else
 //        if (!classname.equals("one"))
-        c += "parent2 = parent;\n";
+        c += "parent = _parent;\n";
         for (ParameterInstance p : parameterInstances) {
-            if (!((p.isOnParent() && enableOnParent))) {
-                c += p.GenerateCodeInit("parent2->", "");
+            if (p.parameter.PropagateToChild != null) {
+                c += "// on Parent: propagate " + p.getName() + " " + enableOnParent + " " + getLegalName() + "" + p.parameter.PropagateToChild + "\n";
+                c += p.PExName("parent->") + ".pfunction = PropagateToSub;\n";
+                c += p.PExName("parent->") + ".finalvalue = (int32_t)(&(parent->instance"
+                        + getLegalName() + "_i.PExch[instance" + getLegalName() + "::PARAM_INDEX_"
+                        + p.parameter.PropagateToChild + "]));\n";
+
+            } else {
+                c += p.GenerateCodeInit("parent->", "");
             }
+            c += p.GenerateCodeInitModulator("parent->", "");
+            //           if ((p.isOnParent() && !enableOnParent)) {
+            //c += "// on Parent: propagate " + p.name + "\n";
+            //String parentparametername = classname.substring(8);
+            //c += "// classname : " + classname + " : " + parentparametername + "\n";
+            //c += "parent->PExch[PARAM_INDEX_" + parentparametername + "_" + getLegalName() + "].pfunction = PropagateToSub;\n";
+            //c += "parent->parent->PExch[PARAM_INDEX_" + parentparametername + "_" + getLegalName() + "].finalvalue = (int32_t)(&(" + p.PExName("parent->") + "));\n";
+            //         }
         }
         for (DisplayInstance p : displayInstances) {
             c += p.GenerateCodeInit("");
@@ -490,20 +615,25 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         if (getType().sInitCode != null) {
             String s = getType().sInitCode;
             for (AttributeInstance p : attributeInstances) {
-                s = s.replace("%" + p.getAttributeName() + "%", p.CValue());
-            }
-            for (ParameterInstance p : parameterInstances) {
-                s = s.replace("%" + p.name + "%", p.variableName("", enableOnParent));
-            }
-            for (DisplayInstance p : displayInstances) {
-                s = s.replace("%" + p.name + "%", p.valueName(""));
+                s = s.replace(p.GetCName(), p.CValue());
             }
             c += s + "\n";
         }
-        c = c.replace("%class%", classname);
-        c = c.replace("%name%", getCInstanceName());
-        c = "  public: void Init(" + classname + " * parent) {\n" + c + "}\n";
-        return c;
+        String d = "  public: void Init(" + classname + " * _parent";
+        if (!displayInstances.isEmpty()) {
+            for (DisplayInstance p : displayInstances) {
+                if (p.display.getLength() > 0) {
+                    d += ",\n";
+                    if (p.display.getDatatype().isPointer()) {
+                        d += p.display.getDatatype().CType() + " " + p.GetCName();
+                    } else {
+                        d += p.display.getDatatype().CType() + " & " + p.GetCName();
+                    }
+                }
+            }
+        }
+        d += ") {\n" + c + "}\n";
+        return d;
     }
 
     @Override
@@ -512,7 +642,7 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         if (getType().sDisposeCode != null) {
             String s = getType().sDisposeCode;
             for (AttributeInstance p : attributeInstances) {
-                s = s.replace("%" + p.getAttributeName() + "%", p.CValue());
+                s = s.replaceAll(p.GetCName(), p.CValue());
             }
             c += s + "\n";
         }
@@ -524,25 +654,19 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         String s = getType().sKRateCode;
         if (s != null) {
             for (AttributeInstance p : attributeInstances) {
-                s = s.replace("%" + p.getAttributeName() + "%", p.CValue());
+                s = s.replaceAll(p.GetCName(), p.CValue());
             }
-            s = s.replace("%name%", getCInstanceName());
-            for (InletInstance i : inletInstances) {
-                Net n = patch.GetNet(i);
-                s = s.replace("%" + i.GetLabel() + "%", i.GetCName());
-            }
-            for (OutletInstance i : outletInstances) {
-                s = s.replace("%" + i.GetLabel() + "%", i.GetCName());
-            }
+            s = s.replace("attr_name", getCInstanceName());
+            s = s.replace("attr_legal_name", getLegalName());
             for (ParameterInstance p : parameterInstances) {
                 if (p.isOnParent() && enableOnParent) {
-                    s = s.replace("%" + p.name + "%", OnParentAccess + p.variableName(vprefix, enableOnParent));
+//                    s = s.replace("%" + p.name + "%", OnParentAccess + p.variableName(vprefix, enableOnParent));
                 } else {
-                    s = s.replace("%" + p.name + "%", p.variableName(vprefix, enableOnParent));
+//                    s = s.replace("%" + p.name + "%", p.variableName(vprefix, enableOnParent));
                 }
             }
             for (DisplayInstance p : displayInstances) {
-                s = s.replace("%" + p.name + "%", p.valueName(vprefix));
+//                s = s.replace("%" + p.name + "%", p.valueName(vprefix));
             }
             return s + "\n";
         }
@@ -552,41 +676,27 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
     public String GenerateSRateCodePlusPlus(String vprefix, boolean enableOnParent, String OnParentAccess) {
         if (getType().sSRateCode != null) {
             String s = "int buffer_index;\n"
-                    + "for(buffer_index=0;buffer_index<BUFSIZE;buffer_index++) {\n" + getType().sSRateCode;
+                    + "for(buffer_index=0;buffer_index<BUFSIZE;buffer_index++) {\n"
+                    + getType().sSRateCode
+                    + "\n}\n";
+
             for (AttributeInstance p : attributeInstances) {
-                if (s.contains("%" + p.getAttributeName() + "%")) {
-                    s = s.replace("%" + p.getAttributeName() + "%", p.CValue());
-                }
+                s = s.replaceAll(p.GetCName(), p.CValue());
             }
-            s = s.replace("%name%", getCInstanceName());
             for (InletInstance i : inletInstances) {
-                if (i.GetDataType() instanceof DataTypeBuffer) {
-                    s = s.replace("%" + i.GetLabel() + "%", i.GetCName() + ((DataTypeBuffer) i.GetDataType()).GetIndex("buffer_index"));
-                } else {
-                    s = s.replace("%" + i.GetLabel() + "%", i.GetCName());
+                if (i.GetDataType() instanceof Frac32buffer) {
+                    s = s.replaceAll(i.GetCName(), i.GetCName() + "[buffer_index]");
                 }
             }
             for (OutletInstance i : outletInstances) {
-                if (i.GetDataType() instanceof DataTypeBuffer) {
-                    s = s.replace("%" + i.GetLabel() + "%", i.GetCName() + ((DataTypeBuffer) i.GetDataType()).GetIndex("buffer_index"));
-                } else {
-                    s = s.replace("%" + i.GetLabel() + "%", i.GetCName());
+                if (i.GetDataType() instanceof Frac32buffer) {
+                    s = s.replaceAll(i.GetCName(), i.GetCName() + "[buffer_index]");
                 }
             }
-            for (ParameterInstance p : parameterInstances) {
-                if (p.isOnParent() && enableOnParent) {
-                    s = s.replace("%" + p.name + "%", OnParentAccess + p.variableName(vprefix, enableOnParent));
-                } else {
-                    s = s.replace("%" + p.name + "%", p.variableName(vprefix, enableOnParent));
-                }
-            }
-            for (DisplayInstance p : displayInstances) {
-                s = s.replace("%" + p.name + "%", p.valueName(vprefix));
-            }
-//            for(Parameter p:type.params) {
-//                s=s.replace("%" + p.name + "%", "x_" + InstanceName + "_" + p.name);
-//            }
-            s += "\n}\n";
+
+            s = s.replace("attr_name", getCInstanceName());
+            s = s.replace("attr_legal_name", getLegalName());
+
             return s;
         }
         return "";
@@ -598,17 +708,39 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         s = "  public: void dsp (";
         for (InletInstance i : inletInstances) {
             if (comma) {
-                s += ",\n    ";
+                s += ",\n";
             }
             s += "const " + i.GetDataType().CType() + " " + i.GetCName();
             comma = true;
         }
         for (OutletInstance i : outletInstances) {
             if (comma) {
-                s += ",\n    ";
+                s += ",\n";
             }
             s += i.GetDataType().CType() + " & " + i.GetCName();
             comma = true;
+        }
+        for (ParameterInstance i : parameterInstances) {
+            if (i.parameter.PropagateToChild == null) {
+                if (comma) {
+                    s += ",\n";
+                }
+                s += i.parameter.CType() + " " + i.GetCName();
+                comma = true;
+            }
+        }
+        for (DisplayInstance i : displayInstances) {
+            if (i.display.getLength() > 0) {
+                if (comma) {
+                    s += ",\n";
+                }
+                if (i.display.getDatatype().isPointer()) {
+                    s += i.display.getDatatype().CType() + " " + i.GetCName();
+                } else {
+                    s += i.display.getDatatype().CType() + " & " + i.GetCName();
+                }
+                comma = true;
+            }
         }
         s += "  ){\n";
         s += GenerateKRateCodePlusPlus("", enableOnParent, OnParentAccess);
@@ -617,12 +749,14 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         return s;
     }
 
+    public final static String MidiHandlerFunctionHeader = "void MidiInHandler(midi_device_t dev, uint8_t port, uint8_t status, uint8_t data1, uint8_t data2) {\n";
+
     @Override
     public String GenerateClass(String ClassName, String OnParentAccess, Boolean enableOnParent) {
         String s = "";
         s += "class " + getCInstanceName() + "{\n";
         s += "  public: // v1\n";
-        s += "  " + ClassName + " *parent2;\n";
+        s += "  " + ClassName + " *parent;\n";
         s += GenerateInstanceCodePlusPlus(ClassName, enableOnParent);
         s += GenerateInitCodePlusPlus(ClassName, enableOnParent);
         s += GenerateDisposeCodePlusPlus(ClassName);
@@ -630,7 +764,7 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         {
             String d3 = GenerateCodeMidiHandler("");
             if (!d3.isEmpty()) {
-                s += "void MidiInHandler(midi_device_t dev, uint8_t port, uint8_t status, uint8_t data1, uint8_t data2){\n";
+                s += MidiHandlerFunctionHeader;
                 s += d3;
                 s += "}\n";
             }
@@ -649,11 +783,11 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
             s += i.GenerateCodeMidiHandler("");
         }
         for (AttributeInstance p : attributeInstances) {
-            if (s.contains("%" + p.getAttributeName() + "%")) {
-                s = s.replace("%" + p.getAttributeName() + "%", p.CValue());
-            }
+            s = s.replaceAll(p.GetCName(), p.CValue());
         }
-        s = s.replace("%name%", vprefix + getCInstanceName());
+        s = s.replace("attr_name", getCInstanceName());
+        s = s.replace("attr_legal_name", getLegalName());
+
         if (s.length() > 0) {
             return "{\n" + s + "}\n";
         } else {
@@ -676,11 +810,11 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
 
     @Override
     public boolean providesModulationSource() {
-        AxoObject type = getType();
-        if (type == null) {
+        AxoObject atype = getType();
+        if (atype == null) {
             return false;
         } else {
-            return type.providesModulationSource();
+            return atype.providesModulationSource();
         }
     }
 
@@ -694,13 +828,19 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
         if (getType() instanceof AxoObjectFromPatch) {
             return;
         }
+        if (getType() instanceof AxoObjectPatcher) {
+            return;
+        }
+        if (getType() instanceof AxoObjectPatcherObject) {
+            return;
+        }
         String id = typeName;
-        ArrayList<AxoObjectAbstract> candidates = MainFrame.mainframe.axoObjects.GetAxoObjectFromName(id, patch.GetCurrentWorkingDirectory());
+        ArrayList<AxoObjectAbstract> candidates = MainFrame.axoObjects.GetAxoObjectFromName(id, patch.GetCurrentWorkingDirectory());
         if (candidates == null) {
             return;
         }
         if (candidates.isEmpty()) {
-            Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.SEVERE, "could not resolve any candidates" + id);
+            Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.SEVERE, "could not resolve any candidates {0}", id);
         }
         if (candidates.size() == 1) {
             return;
@@ -720,7 +860,7 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
             if (d == null) {
                 continue;
             }
-            String name = j.getInlet().name;
+            String name = j.getInlet().getName();
             for (int i = 0; i < candidates.size(); i++) {
                 AxoObjectAbstract o = candidates.get(i);
                 Inlet i2 = o.GetInlet(name);
@@ -756,15 +896,133 @@ public class AxoObjectInstance extends AxoObjectInstanceAbstract {
             return;
         }
         if (selected != getType()) {
-            //Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.INFO,"promoting " + this + " to " + selected);            
+            Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.FINE, "promoting " + this + " to " + selected);
             patch.ChangeObjectInstanceType(this, selected);
+            patch.cleanUpIntermediateChangeStates(4);
         } else {
-            //Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.INFO,"no promotion");            
+//            Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.INFO, "no promotion for {0}", typeName);
         }
     }
 
     @Override
     public ArrayList<DisplayInstance> GetDisplayInstances() {
         return displayInstances;
+    }
+
+    Rectangle editorBounds;
+    Integer editorActiveTabIndex;
+
+    @Override
+    public void ObjectModified(Object src) {
+        if (getPatch() != null) {
+            if (!getPatch().IsLocked()) {
+                updateObj();
+            } else {
+                deferredObjTypeUpdate = true;
+            }
+        }
+
+        try {
+            AxoObject o = (AxoObject) src;
+            if (o.editor != null && o.editor.getBounds() != null) {
+                editorBounds = o.editor.getBounds();
+                editorActiveTabIndex = o.editor.getActiveTabIndex();
+                this.getType().editorBounds = editorBounds;
+                this.getType().editorActiveTabIndex = editorActiveTabIndex;
+            }
+        } catch (ClassCastException ex) {
+        }
+    }
+
+    @Override
+    public ArrayList<SDFileReference> GetDependendSDFiles() {
+        ArrayList<SDFileReference> files = getType().filedepends;
+        if (files == null){
+            files = new ArrayList<SDFileReference>();
+        } else {
+            String p1 = getType().sPath;
+            if (p1==null) {
+                // embedded object, reference path is of the patch
+                p1 = getPatch().getFileNamePath();
+                if (p1 == null) {
+                    p1 = "";
+                }
+            }
+            File f1 = new File(p1);
+            java.nio.file.Path p = f1.toPath().getParent();
+            for (SDFileReference f: files){                
+                f.Resolve(p);
+            }
+        }
+        for (AttributeInstance a : attributeInstances) {
+            ArrayList<SDFileReference> f2 = a.GetDependendSDFiles();
+            if (f2 != null) {
+                files.addAll(f2);
+            }
+        }
+        return files;
+    }
+
+    void ConvertToPatchPatcher() {
+        if (IsLocked()) {
+            return;
+        }
+        ArrayList<AxoObjectAbstract> ol = MainFrame.mainframe.axoObjects.GetAxoObjectFromName("patch/patcher", null);
+        assert (!ol.isEmpty());
+        AxoObjectAbstract o = ol.get(0);
+        String iname = getInstanceName();
+        AxoObjectInstancePatcher oi = (AxoObjectInstancePatcher) getPatch().ChangeObjectInstanceType1(this, o);
+        AxoObjectFromPatch ao = (AxoObjectFromPatch) getType();
+        PatchFrame pf = PatchGUI.OpenPatch(ao.f);
+        oi.pf = pf;
+        oi.pg = pf.getPatch();
+        oi.setInstanceName(iname);
+        oi.updateObj();
+        getPatch().delete(this);
+        getPatch().SetDirty();
+    }
+
+    void ConvertToEmbeddedObj() {
+        if (IsLocked()) {
+            return;
+        }
+        try {
+            ArrayList<AxoObjectAbstract> ol = MainFrame.mainframe.axoObjects.GetAxoObjectFromName("patch/object", null);
+            assert (!ol.isEmpty());
+            AxoObjectAbstract o = ol.get(0);
+            String iname = getInstanceName();
+            AxoObjectInstancePatcherObject oi = (AxoObjectInstancePatcherObject) getPatch().ChangeObjectInstanceType1(this, o);
+            AxoObject ao = getType();
+            oi.ao = new AxoObjectPatcherObject(ao.id, ao.sDescription);
+            oi.ao.copy(ao);
+            oi.ao.sPath = "";
+            oi.ao.upgradeSha = null;
+            oi.ao.CloseEditor();
+            oi.setInstanceName(iname);
+            oi.updateObj();
+            getPatch().delete(this);
+            getPatch().SetDirty();
+        } catch (CloneNotSupportedException ex) {
+            Logger.getLogger(AxoObjectInstance.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    @Persist
+    public void Persist() {
+        AxoObject o = getType();
+        if (o != null) {
+            if (o.uuid != null && !o.uuid.isEmpty()) {
+                typeUUID = o.uuid;
+                typeSHA = null;
+            }
+        }
+    }
+
+    @Override
+    public void Close() {
+        super.Close();
+        for (AttributeInstance a : attributeInstances) {
+            a.Close();
+        }
     }
 }

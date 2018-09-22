@@ -17,19 +17,25 @@
  */
 package axoloti.inlets;
 
+import axoloti.atom.AtomDefinition;
+import axoloti.atom.AtomInstance;
 import axoloti.datatypes.DataType;
 import axoloti.datatypes.SignalMetaData;
+import axoloti.object.AxoObjectInstance;
+import axoloti.utils.CharEscape;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import org.simpleframework.xml.Attribute;
 
 /**
  *
  * @author Johannes Taelman
  */
-public abstract class Inlet {
+public abstract class Inlet implements AtomDefinition, Cloneable {
 
     @Attribute
-    public String name;
+    String name;
     @Attribute(required = false)
     public String description;
 
@@ -41,6 +47,40 @@ public abstract class Inlet {
         this.description = description;
     }
 
+    @Override
+    public String toString() {
+        return getTypeName();
+    }
+
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public String getDescription() {
+        return description;
+    }
+
+    @Override
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String GetCName() {
+        return "inlet_" + CharEscape.CharEscape(name);
+    }
+
+    @Override
+    public AtomInstance CreateInstance(AxoObjectInstance o) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
     public abstract DataType getDatatype();
 
     SignalMetaData GetSignalMetaData() {
@@ -50,5 +90,15 @@ public abstract class Inlet {
     public void updateSHA(MessageDigest md) {
         md.update(name.getBytes());
         md.update((byte) getDatatype().hashCode());
+    }
+
+    @Override
+    public Inlet clone() throws CloneNotSupportedException {
+        return (Inlet)super.clone();
+    }
+
+    @Override
+    public List<String> getEditableFields(){
+        return new ArrayList<String>();
     }
 }

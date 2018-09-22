@@ -17,9 +17,8 @@
  */
 package axoloti.parameters;
 
-import axoloti.Modulation;
-import axoloti.Modulator;
 import axoloti.Preset;
+import axoloti.Theme;
 import axoloti.datatypes.Value;
 import components.AssignMidiCCComponent;
 import components.AssignMidiCCMenuItems;
@@ -27,19 +26,17 @@ import components.AssignModulatorComponent;
 import components.AssignModulatorMenuItems;
 import components.AssignPresetComponent;
 import components.control.DialComponent;
-import java.awt.Color;
 import javax.swing.BoxLayout;
 import javax.swing.JMenu;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
-import javax.swing.UIManager;
 import org.simpleframework.xml.Attribute;
 
 /**
  *
  * @author Johannes Taelman
  */
-public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
+public class ParameterInstanceFrac32UMap<T extends ParameterFrac32> extends ParameterInstanceFrac32U<T> {
 
     AssignModulatorComponent modulationAssign;
     AssignPresetComponent presetAssign;
@@ -54,7 +51,10 @@ public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
 
     @Override
     public DialComponent CreateControl() {
-        return new DialComponent(0.0, getMin(), getMax(), getTick());
+        DialComponent d = new DialComponent(0.0, getMin(), getMax(), getTick());
+        d.setParentAxoObjectInstance(axoObj);
+        d.setNative(convs);
+        return d;
     }
 
     @Override
@@ -74,6 +74,7 @@ public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
     public void PostConstructor() {
         super.PostConstructor();
         JPanel btns = new JPanel();
+        btns.setBackground(Theme.getCurrentTheme().Object_Default_Background);
         btns.setLayout(new BoxLayout(btns, BoxLayout.PAGE_AXIS));
 
         //lblCC = new LabelComponent("C");
@@ -95,9 +96,9 @@ public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
     public void setOnParent(Boolean b) {
         super.setOnParent(b);
         if ((b != null) && b) {
-            setForeground(Color.blue);
+            setForeground(Theme.getCurrentTheme().Parameter_On_Parent_Highlight);
         } else {
-            setForeground(Color.black);
+            setForeground(Theme.getCurrentTheme().Parameter_Default_Foreground);
         }
     }
 
@@ -133,25 +134,11 @@ public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
             n = axoObj.getInstanceName() + ":" + name;
         }
         String s = PExName(vprefix) + ".pfunction = " + GetPFunction() + ";\n"
-                + PExName(vprefix) + ".pfunction(&" + PExName(vprefix) + ");\n"
                 + "  SetKVP_IPVP(&" + StructAccces + KVPName(vprefix) + ",ObjectKvpRoot, \"" + n + "\" ,"
                 + "&" + PExName(vprefix) + ","
-                + (((ParameterFrac32UMap) parameter).MinValue.getRaw()) + ","
-                + (((ParameterFrac32UMap) parameter).MaxValue.getRaw()) + ");\n"
+                + " 0,"
+                + " 1<<27);\n"
                 + "  KVP_RegisterObject(&" + StructAccces + KVPName(vprefix) + ");\n";
-        if (modulators != null) {
-            for (Modulation m : modulators) {
-                Modulator mod = axoObj.patch.GetModulatorOfModulation(m);
-                if (mod == null) {
-                    System.out.println("modulator not found");
-                    continue;
-                }
-                int modulation_index = mod.Modulations.indexOf(m);
-                s += "  parent2->PExModulationSources[" + mod.getCName() + "][" + modulation_index + "].PEx = &" + PExName(vprefix) + ";\n";
-                s += "  parent2->PExModulationSources[" + mod.getCName() + "][" + modulation_index + "].amount = " + m.getValue().getRaw() + ";\n";
-                s += "  parent2->PExModulationSources[" + mod.getCName() + "][" + modulation_index + "].prod = 0;\n";
-            }
-        }
         return s;
     }
 
@@ -170,7 +157,7 @@ public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
 
     @Override
     public String GenerateCodeMidiHandler(String vprefix) {
-        return GenerateMidiCCCodeSub(vprefix, "data2<<20");
+        return GenerateMidiCCCodeSub(vprefix, "(data2!=127)?data2<<20:0x07FFFFFF");
     }
 
     /*
@@ -182,14 +169,14 @@ public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
         if (i > 0) {
             Preset p = GetPreset(presetEditActive);
             if (p != null) {
-                setBackground(Color.yellow);
+                setBackground(Theme.getCurrentTheme().Paramete_Preset_Highlight);
                 ctrl.setValue(p.value.getDouble());
             } else {
-                setBackground(UIManager.getColor("Panel.background"));
+                setBackground(Theme.getCurrentTheme().Parameter_Default_Background);
                 ctrl.setValue(value.getDouble());
             }
         } else {
-            setBackground(UIManager.getColor("Panel.background"));
+            setBackground(Theme.getCurrentTheme().Parameter_Default_Background);
             ctrl.setValue(value.getDouble());
         }
         presetAssign.repaint();
@@ -205,12 +192,14 @@ public class ParameterInstanceFrac32UMap extends ParameterInstanceFrac32U {
     @Override
     public void populatePopup(JPopupMenu m) {
         super.populatePopup(m);
-        JMenu m1 = new JMenu("Midi CC");
-        new AssignMidiCCMenuItems(this, m1);
-        m.add(m1);
-        JMenu m2 = new JMenu("Modulation");
-        new AssignModulatorMenuItems(this, m2);
-        m.add(m2);
+        if (GetObjectInstance().getPatch() != null) {
+            JMenu m1 = new JMenu("Midi CC");
+            new AssignMidiCCMenuItems(this, m1);
+            m.add(m1);
+            JMenu m2 = new JMenu("Modulation");
+            new AssignModulatorMenuItems((ParameterInstanceFrac32UMap<ParameterFrac32>) this, m2);
+            m.add(m2);
+        }
     }
 
     @Override

@@ -19,7 +19,7 @@ package axoloti;
 
 import axoloti.datatypes.ValueFrac32;
 import axoloti.object.AxoObjectInstanceAbstract;
-import axoloti.parameters.ParameterInstance;
+import axoloti.parameters.ParameterInstanceFrac32;
 import java.util.ArrayList;
 import org.simpleframework.xml.Attribute;
 
@@ -53,17 +53,17 @@ public class Modulation {
         return value;
     }
 
-    public void PostConstructor(ParameterInstance p) {
+    public void PostConstructor(ParameterInstanceFrac32 p) {
         System.out.println("Modulation postconstructor");
         destination = p;
-        source = p.axoObj.patch.GetObjectInstance(sourceName);
+        source = p.GetObjectInstance().patch.GetObjectInstance(sourceName);
         if (source == null) {
             System.out.println("modulation source missing!");
         } else {
             System.out.println("modulation source found " + source.getInstanceName());
         }
         Modulator m = null;
-        for (Modulator m1 : p.axoObj.patch.Modulators) {
+        for (Modulator m1 : p.GetObjectInstance().patch.Modulators) {
             System.out.println("modulator match? " + m1.objinst.getInstanceName());
             if (m1.objinst == source) {
                 if ((m1.name != null) && (!m1.name.isEmpty())) {
@@ -87,5 +87,5 @@ public class Modulation {
         }
     }
     public AxoObjectInstanceAbstract source;
-    public ParameterInstance destination;
+    public ParameterInstanceFrac32 destination;
 }

@@ -25,7 +25,6 @@ import components.ButtonComponent;
 import components.ButtonComponent.ActListener;
 import java.awt.Component;
 import java.awt.Point;
-import javax.swing.JPanel;
 import org.simpleframework.xml.Element;
 
 /**
@@ -38,6 +37,8 @@ public class AxoObjectInstancePatcher extends AxoObjectInstance {
     @Element(name = "subpatch")
     PatchGUI pg;
 
+    private ButtonComponent BtnUpdate;
+
     public AxoObjectInstancePatcher() {
     }
 
@@ -45,6 +46,7 @@ public class AxoObjectInstancePatcher extends AxoObjectInstance {
         super(type, patch1, InstanceName1, location);
     }
 
+    @Override
     public void updateObj1() {
         if (pg == null) {
             pg = new PatchGUI();
@@ -55,23 +57,40 @@ public class AxoObjectInstancePatcher extends AxoObjectInstance {
             pg.PostContructor();
         }
         if (pg != null) {
-            AxoObject ao = pg.GenerateAxoObj();
+            AxoObject ao = pg.GenerateAxoObj(new AxoObjectPatcher());
             setType(ao);
+            ao.id = "patch/patcher";
+            ao.sDescription = pg.getNotes();
+            ao.sLicense = pg.getSettings().getLicense();
+            ao.sAuthor = pg.getSettings().getAuthor();
+            pg.container(patch);
         }
     }
 
+    @Override
     public void updateObj() {
         if (pg != null) {
-            AxoObject ao = pg.GenerateAxoObj();
+            AxoObject ao = pg.GenerateAxoObj(new AxoObjectPatcher());
             setType(ao);
             PostConstructor();
         }
-        for (Component cmp : getComponents()) {
-            cmp.doLayout();
-            cmp.repaint();
+        validate();
+    }
+
+    @Override
+    public void Unlock() {
+        super.Unlock();
+        if (BtnUpdate != null) {
+            BtnUpdate.setEnabled(true);
         }
-        doLayout();
-        repaint();
+    }
+
+    @Override
+    public void Lock() {
+        super.Lock();
+        if (BtnUpdate != null) {
+            BtnUpdate.setEnabled(false);
+        }
     }
 
     public void edit() {
@@ -83,6 +102,7 @@ public class AxoObjectInstancePatcher extends AxoObjectInstance {
             pg.setFileNamePath(getInstanceName());
             pg.PostContructor();
         }
+        pf.setState(java.awt.Frame.NORMAL);
         pf.setVisible(true);
     }
 
@@ -100,7 +120,7 @@ public class AxoObjectInstancePatcher extends AxoObjectInstance {
             }
         });
         add(BtnEdit);
-        ButtonComponent BtnUpdate = new ButtonComponent("update");
+        BtnUpdate = new ButtonComponent("update");
         BtnUpdate.setAlignmentX(LEFT_ALIGNMENT);
         BtnUpdate.setAlignmentY(TOP_ALIGNMENT);
         BtnUpdate.addActListener(new ActListener() {
@@ -111,5 +131,13 @@ public class AxoObjectInstancePatcher extends AxoObjectInstance {
         });
         add(BtnUpdate);
         resizeToGrid();
+    }
+
+    @Override
+    public void Close() {
+        super.Close();
+        if (pf != null) {
+            pf.Close();
+        }
     }
 }

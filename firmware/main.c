@@ -42,6 +42,10 @@
 #include "exceptions.h"
 #include "watchdog.h"
 
+#include "chprintf.h"
+#include "usbcfg.h"
+#include "sysmon.h"
+
 #if (BOARD_AXOLOTI_V05)
 #include "sdram.c"
 #include "stm32f4xx_fmc.c"
@@ -50,6 +54,9 @@
 /*===========================================================================*/
 /* Initialization and main thread.                                           */
 /*===========================================================================*/
+
+
+//#define ENABLE_SERIAL_DEBUG 1
 
 #ifdef ENABLE_USB_HOST
 #if (BOARD_AXOLOTI_V03)
@@ -85,48 +92,10 @@ int main(void) {
   halInit();
   chSysInit();
 
-  exception_init();
+  sdcard_init();
+  sysmon_init();
 
-  InitPatch0();
-
-  InitPConnection();
-
-  InitPWM();
-
-  // display SPI CS?
-  palSetPadMode(GPIOC, 1, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPad(GPIOC, 1);
-
-  chThdSleepMilliseconds(10);
-
-  sdcardInit();
-
-  palSetPadMode(SW2_PORT, SW2_PIN, PAL_MODE_INPUT_PULLDOWN);
-
-  axoloti_board_init();
-  codec_init();
-  if (!palReadPad(SW2_PORT, SW2_PIN)) { // button S2 not pressed
-    watchdog_init();
-    chThdSleepMilliseconds(1);
-  }
-  start_dsp_thread();
-  adc_init();
-  axoloti_math_init();
-  midi_init();
-
-#if ((BOARD_AXOLOTI_V03)||(BOARD_AXOLOTI_V05))
-  axoloti_control_init();
-#endif
-  ui_init();
-  StartLoadPatchTread();
-
-#if (BOARD_AXOLOTI_V05)
-  configSDRAM();
-  //memTest();
-#endif
-
-#ifdef ENABLE_USB_HOST
-#if ENABLE_USB_HOST_DEBUG
+#if ENABLE_SERIAL_DEBUG
 // SD2 for serial debug output
   palSetPadMode(GPIOA, 3, PAL_MODE_ALTERNATE(7) | PAL_MODE_INPUT); // RX
   palSetPadMode(GPIOA, 2, PAL_MODE_OUTPUT_PUSHPULL); // TX
@@ -135,7 +104,45 @@ int main(void) {
   static const SerialConfig sd2Cfg = {115200,
         0, 0, 0};
   sdStart(&SD2, &sd2Cfg);
+  chprintf((BaseSequentialStream * )&SD2,"Hello world!\r\n");
 #endif
+
+  exception_init();
+
+  InitPatch0();
+
+  InitPConnection();
+
+  // display SPI CS?
+  palSetPadMode(GPIOC, 1, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPad(GPIOC, 1);
+
+  chThdSleepMilliseconds(10);
+
+  palSetPadMode(SW2_PORT, SW2_PIN, PAL_MODE_INPUT_PULLDOWN);
+
+  axoloti_board_init();
+  adc_init();
+  axoloti_math_init();
+  midi_init();
+  start_dsp_thread();
+  codec_init();
+  if (!palReadPad(SW2_PORT, SW2_PIN)) { // button S2 not pressed
+//    watchdog_init();
+    chThdSleepMilliseconds(1);
+  }
+
+#if ((BOARD_AXOLOTI_V03)||(BOARD_AXOLOTI_V05))
+  axoloti_control_init();
+#endif
+  ui_init();
+
+#if (BOARD_AXOLOTI_V05)
+  configSDRAM();
+  //memTest();
+#endif
+
+#ifdef ENABLE_USB_HOST
   MY_USBH_Init();
 #endif
 
@@ -143,20 +150,18 @@ int main(void) {
     // only try booting a patch when no exception is to be reported
 
 #if ((BOARD_AXOLOTI_V03)||(BOARD_AXOLOTI_V05))
-    if (!palReadPad(SW2_PORT, SW2_PIN)) // button S2 not pressed
-      SDLoadPatch("0:start.bin");
+    sdcard_attemptMountIfUnmounted();
+    if (fs_ready && !palReadPad(SW2_PORT, SW2_PIN)){
+      // button S2 not pressed
+      LoadPatchStartSD();
+    }
 #endif
 
     // if no patch booting or running yet
     // try loading from flash
-    if (patchStatus) {
-      // patch in flash sector 11
-      memcpy((uint8_t *)PATCHMAINLOC, (uint8_t *)PATCHFLASHLOC, PATCHFLASHSIZE);
-      if ((*(uint32_t *)PATCHMAINLOC != 0xFFFFFFFF)
-          && (*(uint32_t *)PATCHMAINLOC != 0)) {
-        if (!palReadPad(SW2_PORT, SW2_PIN)) // button S2 not pressed
-          StartPatch();
-      }
+    if (patchStatus == STOPPED) {
+      if (!palReadPad(SW2_PORT, SW2_PIN)) // button S2 not pressed
+        LoadPatchStartFlash();
     }
   }
 

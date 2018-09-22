@@ -17,6 +17,7 @@
  */
 package axoloti.parameters;
 
+import axoloti.datatypes.ValueFrac32;
 import axoloti.realunits.LinDB;
 import axoloti.realunits.LinRatio;
 import axoloti.realunits.NativeToReal;
@@ -35,6 +36,10 @@ public class ParameterFrac32UMapGain extends ParameterFrac32UMap {
         super(name);
     }
 
+    public ParameterFrac32UMapGain(String name, ValueFrac32 DefaultValue) {
+        super(name, DefaultValue);
+    }
+
     @Override
     public ParameterInstanceFrac32UMap InstanceFactory() {
         ParameterInstanceFrac32UMap p = super.InstanceFactory();
@@ -44,4 +49,10 @@ public class ParameterFrac32UMapGain extends ParameterFrac32UMap {
         return p;
     }
 
+    static public final String TypeName = "frac32.u.map.gain";
+
+    @Override
+    public String getTypeName() {
+        return TypeName;
+    }
 }

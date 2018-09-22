@@ -420,7 +420,7 @@
  * @note    The default is @p FALSE.
  */
 #if !defined(CH_DBG_FILL_THREADS) || defined(__DOXYGEN__)
-#define CH_DBG_FILL_THREADS             FALSE
+#define CH_DBG_FILL_THREADS             TRUE
 #endif
 
 /**
@@ -528,6 +528,12 @@
 /*===========================================================================*/
 /* Port-specific settings (override port settings defaulted in chcore.h).    */
 /*===========================================================================*/
+
+/*===========================================================================*/
+/* Other                                                                     */
+/*===========================================================================*/
+
+#define CHPRINTF_USE_FLOAT  TRUE
 
 #endif  /* _CHCONF_H_ */
 

@@ -1,11 +1,11 @@
 #!/bin/sh
 set -e
 platformdir="$(cd $(dirname $0); pwd -P)"
-export PATH=$PATH:${platformdir}/gcc-arm-none-eabi-4_8-2014q3/bin/:${platformdir}/bin
-#echo $PATH
-cd ${platformdir}/../firmware
-echo "Compiling firmware..."
-make
-cd flasher
-echo "Compiling firmware flasher..."
-make
+
+export axoloti_release=${axoloti_release:="$platformdir/.."}
+export axoloti_runtime=${axoloti_runtime:="$platformdir/.."}
+export axoloti_firmware=${axoloti_firmware:="$axoloti_release/firmware"}
+export axoloti_home=${axoloti_home:="$platformdir/.."}
+
+cd "${axoloti_firmware}"
+"${axoloti_firmware}/compile_firmware_osx.sh" $1

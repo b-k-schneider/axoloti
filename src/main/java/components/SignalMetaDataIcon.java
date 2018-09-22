@@ -17,6 +17,7 @@
  */
 package components;
 
+import axoloti.Theme;
 import axoloti.datatypes.SignalMetaData;
 import static axoloti.datatypes.SignalMetaData.bipolar;
 import java.awt.BasicStroke;
@@ -33,7 +34,7 @@ import javax.swing.JComponent;
  */
 public class SignalMetaDataIcon extends JComponent {
 
-    private SignalMetaData smd;
+    private final SignalMetaData smd;
 
     public SignalMetaDataIcon(SignalMetaData smd) {
         this.smd = smd;
@@ -41,6 +42,7 @@ public class SignalMetaDataIcon extends JComponent {
         setMinimumSize(d);
         setMaximumSize(d);
         setPreferredSize(d);
+        setBackground(Theme.getCurrentTheme().Object_Default_Background);
     }
     private final int x1 = 2;
     private final int x2 = 5;
@@ -54,6 +56,7 @@ public class SignalMetaDataIcon extends JComponent {
 
     @Override
     public void paintComponent(Graphics g) {
+        super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_ON);

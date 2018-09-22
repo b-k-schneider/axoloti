@@ -20,6 +20,7 @@ package components;
 import axoloti.Modulation;
 import axoloti.Modulator;
 import axoloti.datatypes.ValueFrac32;
+import axoloti.parameters.ParameterFrac32;
 import axoloti.parameters.ParameterInstanceFrac32UMap;
 import components.control.ACtrlEvent;
 import components.control.ACtrlListener;
@@ -37,13 +38,15 @@ import javax.swing.JPanel;
  */
 public class AssignModulatorMenuItems {
 
-    public AssignModulatorMenuItems(final ParameterInstanceFrac32UMap param, JComponent parent) {
+    double valueBeforeAdjustment;
+
+    public AssignModulatorMenuItems(final ParameterInstanceFrac32UMap<ParameterFrac32> param, JComponent parent) {
         final ArrayList<HSliderComponent> hsls = new ArrayList<HSliderComponent>();
 
         //this.setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         hsls.clear();
 
-        for (Modulator m : param.axoObj.patch.Modulators) {
+        for (Modulator m : param.GetObjectInstance().patch.Modulators) {
             JPanel p = new JPanel();
             p.setLayout(new BoxLayout(p, BoxLayout.LINE_AXIS));
             String modlabel;
@@ -70,12 +73,25 @@ public class AssignModulatorMenuItems {
                     ValueFrac32 v = new ValueFrac32(((HSliderComponent) e.getSource()).getValue());
                     param.updateModulation(i, v.getDouble());
                 }
+
+                @Override
+                public void ACtrlAdjustmentBegin(ACtrlEvent e) {
+                    valueBeforeAdjustment = ((HSliderComponent) e.getSource()).getValue();
+                }
+
+                @Override
+                public void ACtrlAdjustmentFinished(ACtrlEvent e) {
+                    double vnew = ((HSliderComponent) e.getSource()).getValue();
+                    if (vnew != valueBeforeAdjustment) {
+                        param.SetDirty();
+                    }
+                }
             });
             hsls.add(hsl);
             p.add(hsl);
             parent.add(p);
         }
-        if (param.axoObj.patch.Modulators.isEmpty()) {
+        if (param.GetObjectInstance().patch.Modulators.isEmpty()) {
             JMenuItem d = new JMenuItem("no modulation sources in patch");
             d.setEnabled(false);
             parent.add(d);

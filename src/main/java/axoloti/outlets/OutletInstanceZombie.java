@@ -34,19 +34,24 @@ public class OutletInstanceZombie extends OutletInstance {
 
     public OutletInstanceZombie(AxoObjectInstanceZombie obj, String name) {
         this.axoObj = obj;
-        this.name = name;
+        this.outletname = name;
+        this.objname = obj.getInstanceName();
         setLayout(new BoxLayout(this, BoxLayout.LINE_AXIS));
         add(Box.createHorizontalGlue());
-        add(new LabelComponent(this.name));
+        add(new LabelComponent(this.outletname));
         add(Box.createHorizontalStrut(2));
         jack = new components.JackOutputComponent(this);
         add(jack);
-        setComponentPopupMenu(popup);
     }
 
     @Override
     public DataType GetDataType() {
         return new axoloti.datatypes.DTZombie();
+    }
+
+    @Override
+    public String GetLabel() {
+        return outletname;
     }
 
 }

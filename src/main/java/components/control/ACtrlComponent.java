@@ -17,7 +17,13 @@
  */
 package components.control;
 
-import java.awt.Toolkit;
+import axoloti.object.AxoObjectInstance;
+import axoloti.utils.KeyUtils;
+import axoloti.utils.Preferences;
+import java.awt.AWTException;
+import java.awt.Color;
+import java.awt.MouseInfo;
+import java.awt.Robot;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.ClipboardOwner;
 import java.awt.datatransfer.DataFlavor;
@@ -46,6 +52,9 @@ import javax.swing.TransferHandler;
  * @author Johannes Taelman
  */
 public abstract class ACtrlComponent extends JComponent {
+
+    protected AxoObjectInstance axoObj;
+    protected Color customBackgroundColor;
 
     public ACtrlComponent() {
         setFocusable(true);
@@ -127,6 +136,26 @@ public abstract class ACtrlComponent extends JComponent {
         }
     }
 
+    void fireEventAdjustmentBegin() {
+        Object[] listeners = listenerList.getListenerList();
+        for (int i = 0; i < listeners.length; i += 2) {
+            if (listeners[i] == ACtrlListener.class) {
+                ((ACtrlListener) listeners[i + 1]).ACtrlAdjustmentBegin(
+                        new ACtrlEvent(this, getValue()));
+            }
+        }
+    }
+
+    void fireEventAdjustmentFinished() {
+        Object[] listeners = listenerList.getListenerList();
+        for (int i = 0; i < listeners.length; i += 2) {
+            if (listeners[i] == ACtrlListener.class) {
+                ((ACtrlListener) listeners[i + 1]).ACtrlAdjustmentFinished(
+                        new ACtrlEvent(this, getValue()));
+            }
+        }
+    }
+
     void SetupTransferHandler() {
         TransferHandler TH = new TransferHandler() {
             @Override
@@ -171,11 +200,11 @@ public abstract class ACtrlComponent extends JComponent {
         setTransferHandler(TH);
         InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
         inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_X,
-                Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()), "cut");
+                KeyUtils.CONTROL_OR_CMD_MASK), "cut");
         inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_C,
-                Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()), "copy");
+                KeyUtils.CONTROL_OR_CMD_MASK), "copy");
         inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_V,
-                Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()), "paste");
+                KeyUtils.CONTROL_OR_CMD_MASK), "paste");
 
         ActionMap map = getActionMap();
         map.put(TransferHandler.getCutAction().getValue(Action.NAME),
@@ -185,5 +214,30 @@ public abstract class ACtrlComponent extends JComponent {
         map.put(TransferHandler.getPasteAction().getValue(Action.NAME),
                 TransferHandler.getPasteAction());
 
+    }
+
+    public void setParentAxoObjectInstance(AxoObjectInstance axoObj) {
+        this.axoObj = axoObj;
+    }
+
+    Robot createRobot() {
+        try {
+            if (Preferences.LoadPreferences().getMouseDoNotRecenterWhenAdjustingControls()) {
+                return null;
+            } else {
+                return new Robot(MouseInfo.getPointerInfo().getDevice());
+            }
+        } catch (AWTException ex) {
+            Logger.getLogger(NumberBoxComponent.class.getName()).log(Level.SEVERE, null, ex);
+            return null;
+        }
+    }
+
+    public void robotMoveToCenter() {
+
+    }
+
+    public void setCustomBackgroundColor(Color c) {
+        this.customBackgroundColor = c;
     }
 }

@@ -17,6 +17,7 @@
  */
 package axoloti.datatypes;
 
+import axoloti.Theme;
 import java.awt.Color;
 
 /**
@@ -68,7 +69,7 @@ public class Frac32buffer extends DataTypeBuffer {
 
     @Override
     public Color GetColor() {
-        return Color.RED;
+        return Theme.getCurrentTheme().Cable_Frac32Buffer;
     }
 
     @Override
@@ -96,5 +97,15 @@ public class Frac32buffer extends DataTypeBuffer {
     public int hashCode() {
         int hash = 3;
         return hash;
+    }
+
+    @Override
+    public boolean isPointer() {
+        return false;
+    }
+
+    @Override
+    public String UnconnectedSink() {
+        return "UNCONNECTED_OUTPUT_BUFFER";
     }
 }

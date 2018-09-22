@@ -21,6 +21,7 @@
 
 typedef struct {
   int32_t header;
+  uint32_t patchID;
   int32_t value;
   int32_t index;
 } PExMessage;
@@ -54,13 +55,16 @@ typedef struct _ParameterExchange {
 } ParameterExchange_t;
 
 typedef struct {
-  ParameterExchange_t *PEx;
+  int32_t parameterIndex;
   int32_t amount;
-  int32_t prod;
 } PExModulationTarget_t;
 
+
 void PExModulationSourceChange(PExModulationTarget_t *modulation,
-                               int32_t nTargets, int32_t value);
+                               int32_t nTargets,
+                               ParameterExchange_t *parameters,
+                               int32_t *oldvalue,
+                               int32_t value);
 
 void PExParameterChange(ParameterExchange_t *param, int32_t value,
                         uint32_t signals);

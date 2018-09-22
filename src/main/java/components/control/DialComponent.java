@@ -18,18 +18,21 @@
 package components.control;
 
 import axoloti.MainFrame;
+import axoloti.Theme;
 import axoloti.datatypes.ValueFrac32;
 import axoloti.realunits.NativeToReal;
 import axoloti.utils.Constants;
+import axoloti.utils.KeyUtils;
+import axoloti.utils.Preferences;
 import java.awt.AWTException;
 import java.awt.BasicStroke;
-import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.Point;
+import java.awt.MouseInfo;
 import java.awt.RenderingHints;
+import java.awt.Robot;
 import java.awt.Stroke;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
@@ -37,7 +40,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.awt.Robot;
+import java.text.ParseException;
 
 /**
  *
@@ -51,12 +54,14 @@ public class DialComponent extends ACtrlComponent {
     private double tick;
     private NativeToReal convs[];
     private String keybBuffer = "";
+    private Robot robot;
 
     public void setNative(NativeToReal convs[]) {
         this.convs = convs;
     }
 
     public DialComponent(double value, double min, double max, double tick) {
+        super();
         setInheritsPopupMenu(true);
         this.value = value;
         this.min = min;
@@ -81,7 +86,6 @@ public class DialComponent extends ACtrlComponent {
         SetupTransferHandler();
     }
     final int layoutTick = 3;
-    Robot robot = null;
 
     @Override
     protected void mouseDragged(MouseEvent e) {
@@ -98,51 +102,69 @@ public class DialComponent extends ACtrlComponent {
                         v = Math.round(v / tick) * tick;
                     }
                 } else {
-                    getRootPane().setCursor(MainFrame.transparentCursor);
+                    this.robotMoveToCenter();
                     double t = tick;
+                    if (KeyUtils.isControlOrCommandDown(e)) {
+                        t = t * 0.1;
+                    }
                     if (e.isShiftDown()) {
                         t = t * 0.1;
                     }
-                    if (e.isControlDown()) {
-                        t = t * 0.1;
-                    }
-                    v = value + t * (MousePressedCoordY - e.getYOnScreen());
+                    v = value + t * ((int) Math.round((MousePressedCoordY - e.getYOnScreen())));
                     if (robot == null) {
-                        try {
-                            robot = new Robot();
-                        } catch (AWTException ex) {
-                            Logger.getLogger(DialComponent.class.getName()).log(Level.SEVERE, null, ex);
-                        }
+                        MousePressedCoordY = e.getYOnScreen();
                     }
-                    robot.mouseMove(MousePressedCoordX, MousePressedCoordY);
-                }
-                if (v > max) {
-                    v = max;
-                }
-                if (v < min) {
-                    v = min;
                 }
                 setValue(v);
+                e.consume();
             }
         }
     }
     int MousePressedCoordX = 0;
     int MousePressedCoordY = 0;
-    int MousePressedBtn = 0;
+    int MousePressedBtn = MouseEvent.NOBUTTON;
 
     @Override
     protected void mousePressed(MouseEvent e) {
-        if (isEnabled()) {
-            grabFocus();
-            MousePressedCoordX = e.getXOnScreen();
-            MousePressedCoordY = e.getYOnScreen();
-            MousePressedBtn = e.getButton();
+        if (!e.isPopupTrigger()) {
+            if (isEnabled()) {
+                robot = createRobot();
+                grabFocus();
+                MousePressedCoordX = e.getXOnScreen();
+                MousePressedCoordY = e.getYOnScreen();
+
+                int lastBtn = MousePressedBtn;
+                MousePressedBtn = e.getButton();
+
+                if (lastBtn != MouseEvent.NOBUTTON) {
+                    if (lastBtn == MouseEvent.BUTTON1) {
+                        // now have both mouse buttons pressed...
+                        getRootPane().setCursor(Cursor.getDefaultCursor());
+                    }
+                }
+
+                if (MousePressedBtn == MouseEvent.BUTTON1) {
+                    if (!Preferences.LoadPreferences().getMouseDoNotRecenterWhenAdjustingControls()) {
+                        getRootPane().setCursor(MainFrame.transparentCursor);
+                    }
+                    fireEventAdjustmentBegin();
+                } else {
+                    getRootPane().setCursor(Cursor.getDefaultCursor());
+                }
+            }
+            e.consume();
         }
     }
 
     @Override
     protected void mouseReleased(MouseEvent e) {
-        getRootPane().setCursor(Cursor.getDefaultCursor());
+        if (isEnabled() && !e.isPopupTrigger()) {
+            getRootPane().setCursor(Cursor.getDefaultCursor());
+            MousePressedBtn = MouseEvent.NOBUTTON;
+            fireEventAdjustmentFinished();
+            e.consume();
+        }
+        robot = null;
     }
 
     @Override
@@ -151,50 +173,77 @@ public class DialComponent extends ACtrlComponent {
             double steps = tick;
             if (ke.isShiftDown()) {
                 steps = steps * 0.1; // mini steps!
-                if (ke.isControlDown()) {
+                if (KeyUtils.isControlOrCommandDown(ke)) {
                     steps = steps * 0.1; // micro steps!                
                 }
-            } else if (ke.isControlDown()) {
+            } else if (KeyUtils.isControlOrCommandDown(ke)) {
                 steps = steps * 10.0; //accelerate!
             }
             switch (ke.getKeyCode()) {
                 case KeyEvent.VK_UP:
                 case KeyEvent.VK_RIGHT:
+                    fireEventAdjustmentBegin();
                     setValue(getValue() + steps);
                     ke.consume();
                     break;
                 case KeyEvent.VK_DOWN:
                 case KeyEvent.VK_LEFT:
+                    fireEventAdjustmentBegin();
                     setValue(getValue() - steps);
                     ke.consume();
                     break;
                 case KeyEvent.VK_PAGE_UP:
+                    fireEventAdjustmentBegin();
                     setValue(getValue() + 5 * steps);
                     ke.consume();
                     break;
                 case KeyEvent.VK_PAGE_DOWN:
+                    fireEventAdjustmentBegin();
                     setValue(getValue() - 5 * steps);
                     ke.consume();
                     break;
                 case KeyEvent.VK_HOME:
+                    fireEventAdjustmentBegin();
                     setValue(getMin());
+                    fireEventAdjustmentFinished();
                     ke.consume();
                     break;
                 case KeyEvent.VK_END:
+                    fireEventAdjustmentBegin();
                     setValue(getMax());
+                    fireEventAdjustmentFinished();
                     ke.consume();
                     break;
                 case KeyEvent.VK_ENTER:
-                    try {
-                        setValue(Float.parseFloat(keybBuffer));
-                    } catch (java.lang.NumberFormatException ex) {
+                    fireEventAdjustmentBegin();
+                    boolean converted = false;
+                    // parseFloat accepts d & f - try the convs first
+                    if (convs != null) {
+                        for (NativeToReal c : convs) {
+                            try {
+                                setValue(c.FromReal(keybBuffer));
+                                converted = true;
+                                break;
+                            } catch (ParseException ex2) {
+                            }
+                        }
                     }
+                    if (!converted) {
+                        // otherwise, try parsing
+                        try {
+                            setValue(Float.parseFloat(keybBuffer));
+                        } catch (java.lang.NumberFormatException ex) {
+                        }
+                    }
+                    fireEventAdjustmentFinished();
                     keybBuffer = "";
                     ke.consume();
                     repaint();
                     break;
                 case KeyEvent.VK_BACK_SPACE:
-                    keybBuffer = keybBuffer.substring(0, keybBuffer.length() - 1);
+                    if (keybBuffer.length() > 0) {
+                        keybBuffer = keybBuffer.substring(0, keybBuffer.length() - 1);
+                    }
                     ke.consume();
                     repaint();
                     break;
@@ -218,17 +267,70 @@ public class DialComponent extends ACtrlComponent {
                 case '9':
                 case '0':
                 case '.':
-                    keybBuffer += ke.getKeyChar();
-                    ke.consume();
-                    repaint();
+                case ' ':
+                case '+':
+                case '*':
+                case '/':
+                case '#':
+                case 'a':
+                case 'A':
+                case 'b':
+                case 'B':
+                case 'c':
+                case 'C':
+                case 'd':
+                case 'D':
+                case 'e':
+                case 'E':
+                case 'f':
+                case 'F':
+                case 'g':
+                case 'G':
+                case 'h':
+                case 'H':
+                case 'i':
+                case 'I':
+                case 'k':
+                case 'K':
+                case 'm':
+                case 'M':
+                case 'n':
+                case 'N':
+                case 'q':
+                case 'Q':
+                case 's':
+                case 'S':
+                case 'x':
+                case 'X':
+                case 'z':
+                case 'Z':
+                    if (!KeyUtils.isControlOrCommandDown(ke)) {
+                        keybBuffer += ke.getKeyChar();
+                        ke.consume();
+                    }
                     break;
                 default:
             }
+            repaint();
         }
     }
 
     @Override
     void keyReleased(KeyEvent ke) {
+        if (isEnabled()) {
+            switch (ke.getKeyCode()) {
+                case KeyEvent.VK_UP:
+                case KeyEvent.VK_RIGHT:
+                case KeyEvent.VK_DOWN:
+                case KeyEvent.VK_LEFT:
+                case KeyEvent.VK_PAGE_UP:
+                case KeyEvent.VK_PAGE_DOWN:
+                    fireEventAdjustmentFinished();
+                    ke.consume();
+                    break;
+                default:
+            }
+        }
     }
 
     private static final Stroke strokeThin = new BasicStroke(1);
@@ -236,6 +338,7 @@ public class DialComponent extends ACtrlComponent {
 
     @Override
     public void paintComponent(Graphics g) {
+        super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_ON);
@@ -251,9 +354,14 @@ public class DialComponent extends ACtrlComponent {
             g2.setStroke(strokeThin);
         }
         if (isEnabled()) {
-            g2.setColor(Color.white);
+            if (this.customBackgroundColor != null) {
+                g2.setColor(this.customBackgroundColor);
+            } else {
+                g2.setColor(Theme.getCurrentTheme().Component_Secondary);
+
+            }
         } else {
-            g2.setColor(getBackground());
+            g2.setColor(Theme.getCurrentTheme().Object_Default_Background);
         }
         g2.fillOval(1, 1, radius * 2 - 2, radius * 2 - 2);
         g2.setPaint(getForeground());
@@ -265,11 +373,11 @@ public class DialComponent extends ACtrlComponent {
             g2.drawLine(radius, radius, radius + x, radius + y);
             if (keybBuffer.isEmpty()) {
                 String s = String.format("%5.2f", value);
-                g2.setFont(Constants.font);
+                g2.setFont(Constants.FONT);
                 g2.drawString(s, 0, getSize().height);
             } else {
-                g2.setColor(Color.red);
-                g2.setFont(Constants.font);
+                g2.setColor(Theme.getCurrentTheme().Error_Text);
+                g2.setFont(Constants.FONT);
                 g2.drawString(keybBuffer, 0, getSize().height);
             }
         }
@@ -286,14 +394,12 @@ public class DialComponent extends ACtrlComponent {
         this.value = value;
 
         if (convs != null) {
-            Point p = getParent().getLocationOnScreen();
             String s = "<html>";
             for (NativeToReal c : convs) {
                 s += c.ToReal(new ValueFrac32(value)) + "<br>";
             }
             this.setToolTipText(s);
         }
-
         repaint();
         fireEvent();
     }
@@ -325,5 +431,12 @@ public class DialComponent extends ACtrlComponent {
 
     public void setTick(double tick) {
         this.tick = tick;
+    }
+
+    public void robotMoveToCenter() {
+        //getRootPane().setCursor(MainFrame.transparentCursor);
+        if (robot != null) {
+            robot.mouseMove(MousePressedCoordX, MousePressedCoordY);
+        }
     }
 }

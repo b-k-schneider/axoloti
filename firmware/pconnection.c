@@ -35,13 +35,34 @@
 #include "crc32.h"
 #include "flash.h"
 #include "watchdog.h"
+#include "usbcfg.h"
+#include "bulk_usb.h"
+#include "midi.h"
+#include "midi_usb.h"
+#include "watchdog.h"
+#include "sysmon.h"
 
-/* Virtual serial port over USB.*/
-SerialUSBDriver SDU1;
+//#define DEBUG_SERIAL 1
 
 void BootLoaderInit(void);
 
 uint32_t fwid;
+
+static WORKING_AREA(waThreadUSBDMidi, 256);
+
+__attribute__((noreturn))
+    static msg_t ThreadUSBDMidi(void *arg) {
+  (void)arg;
+#if CH_USE_REGISTRY
+  chRegSetThreadName("usbdmidi");
+#endif
+  uint8_t r[4];
+  while (1) {
+    chnReadTimeout(&MDU1, &r[0], 4, TIME_INFINITE);
+    MidiInMsgHandler(MIDI_DEVICE_USB_DEVICE, ((r[0] & 0xF0) >> 4) + 1, r[1],
+                     r[2], r[3]);
+  }
+}
 
 void InitPConnection(void) {
 
@@ -52,18 +73,23 @@ void InitPConnection(void) {
   /*
    * Initializes a serial-over-USB CDC driver.
    */
-  sduObjectInit(&SDU1);
-  sduStart(&SDU1, &serusbcfg);
+  mduObjectInit(&MDU1);
+  mduStart(&MDU1, &midiusbcfg);
+  bduObjectInit(&BDU1);
+  bduStart(&BDU1, &bulkusbcfg);
 
   /*
    * Activates the USB driver and then the USB bus pull-up on D+.
    * Note, a delay is inserted in order to not have to disconnect the cable
    * after a reset.
    */
-  usbDisconnectBus(serusbcfg.usbp);
+  usbDisconnectBus(midiusbcfg.usbp);
   chThdSleepMilliseconds(1000);
-  usbStart(serusbcfg.usbp, &usbcfg);
-  usbConnectBus(serusbcfg.usbp);
+  usbStart(midiusbcfg.usbp, &usbcfg);
+  usbConnectBus(midiusbcfg.usbp);
+
+  chThdCreateStatic(waThreadUSBDMidi, sizeof(waThreadUSBDMidi), NORMALPRIO,
+                    ThreadUSBDMidi, NULL);
 }
 
 int AckPending = 0;
@@ -79,39 +105,50 @@ void TransmitDisplayPckt(void) {
   unsigned int length = 12 + (patchMeta.pDisplayVector[2] * 4);
   if (length > 2048)
     return; // FIXME
-  chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+  chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
                           (const unsigned char* )&patchMeta.pDisplayVector[0],
                           length);
 }
 
 void LogTextMessage(const char* format, ...) {
-  if (connected ) {
+  if ((usbGetDriverStateI(BDU1.config->usbp) == USB_ACTIVE) && (connected)) {
     int h = 0x546F7841; // "AxoT"
-    chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+    chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
                             (const unsigned char* )&h, 4);
 
     va_list ap;
     va_start(ap, format);
-    chvprintf((BaseSequentialStream * )&SDU1, format, ap);
+    chvprintf((BaseSequentialStream *)&BDU1, format, ap);
     va_end(ap);
-    chSequentialStreamPut((BaseSequentialStream * )&SDU1, 0);
+    chSequentialStreamPut((BaseSequentialStream * )&BDU1, 0);
   }
 }
 
 void PExTransmit(void) {
-  int i;
-  if (chOQIsEmptyI(&SDU1.oqueue)) {
+  if (!chOQIsEmptyI(&BDU1.oqueue)) {
+    chThdSleepMilliseconds(1);
+    BDU1.oqueue.q_notify(&BDU1.oqueue);
+  }
+  else {
     if (AckPending) {
       int ack[7];
       ack[0] = 0x416F7841; // "AxoA"
-      ack[1] = GetFirmwareID();
+      ack[1] = 0; // reserved
       ack[2] = dspLoadPct;
       ack[3] = patchMeta.patchID;
-      ack[4] = *((int*)0x1FFF7A10); // CPU unique ID
-      ack[5] = *((int*)0x1FFF7A14); // CPU unique ID
-      ack[6] = *((int*)0x1FFF7A18); // CPU unique ID
-      chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+      ack[4] = sysmon_getVoltage10() + (sysmon_getVoltage50()<<16);
+      if (patchStatus) {
+        ack[5] = UNINITIALIZED;
+      } else {
+        ack[5] = loadPatchIndex;
+      }
+      ack[6] = fs_ready;
+      chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
                               (const unsigned char* )&ack[0], 7 * 4);
+
+#ifdef DEBUG_SERIAL
+      chprintf((BaseSequentialStream * )&SD2,"ack!\r\n");
+#endif
 
       if (!patchStatus)
         TransmitDisplayPckt();
@@ -120,17 +157,18 @@ void PExTransmit(void) {
       exception_checkandreport();
       AckPending = 0;
     }
-    TransmitLCDoverUSB();
     if (!patchStatus) {
+      unsigned int i;
       for (i = 0; i < patchMeta.numPEx; i++) {
         if (patchMeta.pPExch[i].signals & 0x01) {
           int v = (patchMeta.pPExch)[i].value;
           patchMeta.pPExch[i].signals &= ~0x01;
           PExMessage msg;
-          msg.header = 0x506F7841; //"AxoP"
+          msg.header = 0x516F7841; //"AxoQ"
+          msg.patchID = patchMeta.patchID;
           msg.index = i;
           msg.value = v;
-          chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+          chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
                                   (const unsigned char* )&msg, sizeof(msg));
         }
       }
@@ -138,17 +176,17 @@ void PExTransmit(void) {
   }
 }
 
+char FileName[256];
+
 static FRESULT scan_files(char *path) {
   FRESULT res;
   FILINFO fno;
   DIR dir;
   int i;
   char *fn;
-
-#if _USE_LFN
-  fno.lfname = 0;
-  fno.lfsize = 0;
-#endif
+  char *msg = &((char*)fbuff)[64];
+  fno.lfname = &FileName[0];
+  fno.lfsize = sizeof(FileName);
   res = f_opendir(&dir, path);
   if (res == FR_OK) {
     i = strlen(path);
@@ -158,35 +196,50 @@ static FRESULT scan_files(char *path) {
         break;
       if (fno.fname[0] == '.')
         continue;
+#if _USE_LFN
+      fn = *fno.lfname ? fno.lfname : fno.fname;
+#else
       fn = fno.fname;
+#endif
+      if (fn[0] == '.')
+        continue;
+      if (fno.fattrib & AM_HID)
+        continue;
       if (fno.fattrib & AM_DIR) {
-        path[i++] = '/';
-        strcpy(&path[i], fn);
+        path[i] = '/';
+        strcpy(&path[i+1], fn);
+        msg[0] = 'A';
+        msg[1] = 'x';
+        msg[2] = 'o';
+        msg[3] = 'f';
+        *(int32_t *)(&msg[4]) = fno.fsize;
+        *(int32_t *)(&msg[8]) = fno.fdate + (fno.ftime<<16);
+        strcpy(&msg[12], &path[1]);
+        int l = strlen(&msg[12]);
+        msg[12+l] = '/';
+        msg[13+l] = 0;
+        chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                                (const unsigned char* )msg, l+14);
         res = scan_files(path);
-        if (res != FR_OK)
-          break;
-        path[--i] = 0;
-      }
-      else {
-        //chprintf(chp, "%s/%s\r\n", path, fn);
-        ((char*)fbuff)[0] = 'A';
-        ((char*)fbuff)[1] = 'x';
-        ((char*)fbuff)[2] = 'o';
-        ((char*)fbuff)[3] = 'f';
-        fbuff[1] = fno.fsize;
-        /*
-         strcpy(&((char*)fbuff)[4],path);
-         int l = strlen((char *)(&fbuff[0]));
-         ((char*)&fbuff[0])[l] = '/';
-         strcpy(&((char*)&fbuff[0])[l+1],fn);
-         l = strlen((char *)(&fbuff[0]));
-         */
-        strcpy(&((char*)fbuff)[8], fn);
-        int l = strlen((char *)(&fbuff[2]));
-        chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
-                                (const unsigned char* )fbuff, l + 9);
+        path[i] = 0;
+        if (res != FR_OK) break;
+      } else {
+        msg[0] = 'A';
+        msg[1] = 'x';
+        msg[2] = 'o';
+        msg[3] = 'f';
+        *(int32_t *)(&msg[4]) = fno.fsize;
+        *(int32_t *)(&msg[8]) = fno.fdate + (fno.ftime<<16);
+        strcpy(&msg[12], &path[1]);
+        msg[12+i-1] = '/';
+        strcpy(&msg[12+i], fn);
+        int l = strlen(&msg[12]);
+        chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                                (const unsigned char* )msg, l+13);
       }
     }
+  } else {
+	  report_fatfs_error(res,0);
   }
   return res;
 }
@@ -198,7 +251,7 @@ void ReadDirectoryListing(void) {
 
   err = f_getfree("/", &clusters, &fsp);
   if (err != FR_OK) {
-    LogTextMessage("FS: f_getfree() failed\r\n");
+	report_fatfs_error(err,0);
     return;
   }
   /*
@@ -214,24 +267,40 @@ void ReadDirectoryListing(void) {
   fbuff[1] = clusters;
   fbuff[2] = fsp->csize;
   fbuff[3] = MMCSD_BLOCK_SIZE;
-  chSequentialStreamWrite((BaseSequentialStream * )&SDU1,
+  chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
                           (const unsigned char* )(&fbuff[0]), 16);
   chThdSleepMilliseconds(10);
-  fbuff[0] = 0;
+  fbuff[0] = '/';
+  fbuff[1] = 0;
   scan_files((char *)&fbuff[0]);
+
+  char *msg = &((char*)fbuff)[64];
+  msg[0] = 'A';
+  msg[1] = 'x';
+  msg[2] = 'o';
+  msg[3] = 'f';
+  *(int32_t *)(&msg[4]) = 0;
+  *(int32_t *)(&msg[8]) = 0;
+  msg[12] = '/';
+  msg[13] = 0;
+  chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                          (const unsigned char* )msg, 14);
 }
 
 /* input data decoder state machine
  *
  * "AxoP" (int value, int16 index) -> parameter set
  * "AxoR" (int length, data) -> preset data set
- * "AxoW" (int length, int addr, char[length] data) -> data write
+ * "AxoW" (int length, int addr, char[length] data) -> generic memory write
  * "Axow" (int length, int offset, char[12] filename, char[length] data) -> data write to sdcard
+ * "Axor" (int offset, int length) -> generic memory read
+ * "Axoy" (int offset) -> generic memory read, single 32bit aligned
  * "AxoS" -> start patch
  * "Axos" -> stop patch
  * "AxoT" (char number) -> apply preset
  * "AxoM" (char char char) -> 3 byte midi message
  * "AxoD" go to DFU mode
+ * "AxoV" reply FW version number (4 bytes)
  * "AxoF" copy patch code to flash (assumes patch is stopped)
  * "Axod" read directory listing
  * "AxoC (int length) (char[] filename)" create and open file on sdcard
@@ -240,25 +309,93 @@ void ReadDirectoryListing(void) {
  * "AxoB (int or) (int and)" buttons for virtual Axoloti Control
  */
 
-char FileName[16];
-
 FIL pFile;
 int pFileSize;
 
-void CreateFile(void) {
-  sdAttemptMountIfUnmounted();
-  FRESULT err;
-  err = f_open(&pFile, &FileName[0], FA_WRITE | FA_CREATE_ALWAYS);
-  if (err != FR_OK) {
-    LogTextMessage("File open failed");
-  }
-  err = f_lseek(&pFile, pFileSize);
-  if (err != FR_OK) {
-    LogTextMessage("File resize failed");
-  }
-  err = f_lseek(&pFile, 0);
-  if (err != FR_OK) {
-    LogTextMessage("File seek failed");
+void ManipulateFile(void) {
+  sdcard_attemptMountIfUnmounted();
+  if (FileName[0]) {
+    // backwards compatibility
+    FRESULT err;
+    err = f_open(&pFile, &FileName[0], FA_WRITE | FA_CREATE_ALWAYS);
+    if (err != FR_OK) {
+      report_fatfs_error(err,&FileName[0]);
+    }
+    err = f_lseek(&pFile, pFileSize);
+    if (err != FR_OK) {
+      report_fatfs_error(err,&FileName[0]);
+    }
+    err = f_lseek(&pFile, 0);
+    if (err != FR_OK) {
+      report_fatfs_error(err,&FileName[0]);
+    }
+  } else {
+    // filename[0] == 0
+    if (FileName[1]=='d') {
+      // create directory
+      FRESULT err;
+      err = f_mkdir(&FileName[6]);
+      if ((err != FR_OK) && (err != FR_EXIST)) {
+        report_fatfs_error(err,&FileName[6]);
+      }
+      // and set timestamp
+      FILINFO fno;
+      fno.fdate = FileName[2] + (FileName[3]<<8);
+      fno.ftime = FileName[4] + (FileName[5]<<8);
+      err = f_utime(&FileName[6],&fno);
+      if (err != FR_OK) {
+        report_fatfs_error(err,&FileName[6]);
+      }
+    } else if (FileName[1]=='f') {
+      // create file
+      FRESULT err;
+      err = f_open(&pFile, &FileName[6], FA_WRITE | FA_CREATE_ALWAYS);
+      if (err != FR_OK) {
+        report_fatfs_error(err,&FileName[6]);
+      }
+      err = f_lseek(&pFile, pFileSize);
+      if (err != FR_OK) {
+        report_fatfs_error(err,&FileName[6]);
+      }
+      err = f_lseek(&pFile, 0);
+      if (err != FR_OK) {
+        report_fatfs_error(err,&FileName[6]);
+      }
+    } else if (FileName[1]=='D') {
+      // delete
+      FRESULT err;
+      err = f_unlink(&FileName[6]);
+      if (err != FR_OK) {
+        report_fatfs_error(err,&FileName[6]);
+      }
+    } else if (FileName[1]=='C') {
+      // change working directory
+      FRESULT err;
+      err = f_chdir(&FileName[6]);
+      if (err != FR_OK) {
+        report_fatfs_error(err,&FileName[6]);
+      }
+    } else if (FileName[1]=='I') {
+      // get file info
+      FRESULT err;
+      FILINFO fno;
+      fno.lfname = &((char*)fbuff)[0];
+      fno.lfsize = 256;
+      err =  f_stat(&FileName[6],&fno);
+      if (err == FR_OK) {
+        char *msg = &((char*)fbuff)[0];
+        msg[0] = 'A';
+        msg[1] = 'x';
+        msg[2] = 'o';
+        msg[3] = 'f';
+        *(int32_t *)(&msg[4]) = fno.fsize;
+        *(int32_t *)(&msg[8]) = fno.fdate + (fno.ftime<<16);
+        strcpy(&msg[12], &FileName[6]);
+        int l = strlen(&msg[12]);
+        chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                                (const unsigned char* )msg, l+13);
+      }
+    }
   }
 }
 
@@ -266,7 +403,17 @@ void CloseFile(void) {
   FRESULT err;
   err = f_close(&pFile);
   if (err != FR_OK) {
-    LogTextMessage("File close failed");
+    report_fatfs_error(err,&FileName[0]);
+  }
+  if (!FileName[0]) {
+    // and set timestamp
+    FILINFO fno;
+    fno.fdate = FileName[2] + (FileName[3]<<8);
+    fno.ftime = FileName[4] + (FileName[5]<<8);
+    err = f_utime(&FileName[6],&fno);
+    if (err != FR_OK) {
+      report_fatfs_error(err,&FileName[6]);
+    }
   }
 }
 
@@ -301,16 +448,40 @@ void CopyPatchToFlash(void) {
   AckPending = 1;
 }
 
+void ReplyFWVersion(void) {
+  uint8_t reply[16];
+  reply[0] = 'A';
+  reply[1] = 'x';
+  reply[2] = 'o';
+  reply[3] = 'V';
+  reply[4] = FWVERSION1; // major
+  reply[5] = FWVERSION2; // minor
+  reply[6] = FWVERSION3;
+  reply[7] = FWVERSION4;
+  uint32_t fwid = GetFirmwareID();
+  reply[8] = (uint8_t)(fwid>>24);
+  reply[9] = (uint8_t)(fwid>>16);
+  reply[10] = (uint8_t)(fwid>>8);
+  reply[11] = (uint8_t)(fwid);
+  reply[12] = (uint8_t)(PATCHMAINLOC>>24);
+  reply[13] = (uint8_t)(PATCHMAINLOC>>16);
+  reply[14] = (uint8_t)(PATCHMAINLOC>>8);
+  reply[15] = (uint8_t)(PATCHMAINLOC);
+  chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                          (const unsigned char* )(&reply[0]), 16);
+}
+
 void PExReceiveByte(unsigned char c) {
   static char header = 0;
   static int state = 0;
-  static int index;
+  static unsigned int index;
   static int value;
   static int position;
   static int offset;
   static int length;
   static int a;
   static int b;
+  static uint32_t patchid;
 
   if (!header) {
     switch (state) {
@@ -359,6 +530,12 @@ void PExReceiveByte(unsigned char c) {
       else if (c == 'A') { // append data to sdcard file
         state = 4;
       }
+      else if (c == 'r') { // generic read
+        state = 4;
+      }
+      else if (c == 'y') { // generic read
+        state = 4;
+      }
       else if (c == 'S') { // stop patch
         state = 0;
         header = 0;
@@ -386,12 +563,22 @@ void PExReceiveByte(unsigned char c) {
       else if (c == 's') { // start patch
         state = 0;
         header = 0;
+        loadPatchIndex = LIVE;
         StartPatch();
+        AckPending = 1;
+      }
+      else if (c == 'V') { // FW version number
+        state = 0;
+        header = 0;
+        ReplyFWVersion();
         AckPending = 1;
       }
       else if (c == 'p') { // ping
         state = 0;
         header = 0;
+#ifdef DEBUG_SERIAL
+        chprintf((BaseSequentialStream * )&SD2,"ping\r\n");
+#endif
         AckPending = 1;
       }
       else if (c == 'c') { // close sdcard file
@@ -408,30 +595,47 @@ void PExReceiveByte(unsigned char c) {
   else if (header == 'P') { // param change
     switch (state) {
     case 4:
-      value = c;
+      patchid = c;
       state++;
       break;
     case 5:
-      value += c << 8;
+      patchid += c << 8;
       state++;
       break;
     case 6:
-      value += c << 16;
+      patchid += c << 16;
       state++;
       break;
     case 7:
-      value += c << 24;
+      patchid += c << 24;
       state++;
       break;
     case 8:
-      index = c;
+      value = c;
       state++;
       break;
     case 9:
+      value += c << 8;
+      state++;
+      break;
+    case 10:
+      value += c << 16;
+      state++;
+      break;
+    case 11:
+      value += c << 24;
+      state++;
+      break;
+    case 12:
+      index = c;
+      state++;
+      break;
+    case 13:
       index += c << 8;
       state = 0;
       header = 0;
-      if (index < patchMeta.numPEx) {
+      if ((patchid == patchMeta.patchID) &&
+          (index < patchMeta.numPEx)) {
         PExParameterChange(&(patchMeta.pPExch)[index], value, 0xFFFFFFEE);
       }
       break;
@@ -552,7 +756,7 @@ void PExReceiveByte(unsigned char c) {
           FRESULT err;
           header = 0;
           state = 0;
-          sdAttemptMountIfUnmounted();
+          sdcard_attemptMountIfUnmounted();
           err = f_open(&pFile, &FileName[0], FA_WRITE | FA_CREATE_ALWAYS);
           if (err != FR_OK) {
             LogTextMessage("File open failed");
@@ -622,14 +826,19 @@ void PExReceiveByte(unsigned char c) {
       pFileSize += c << 24;
       state++;
       break;
+    case 8:
+      FileName[state - 8] = c;
+      // filename starting with null means there are attributes present
+      state++;
+      break;
     default:
-      if (c) {
+      if (c || ((!FileName[0])&&(state<14))) {
         FileName[state - 8] = c;
         state++;
       }
       else {
         FileName[state - 8] = 0;
-        CreateFile();
+        ManipulateFile();
         header = 0;
         state = 0;
         AckPending = 1;
@@ -653,7 +862,7 @@ void PExReceiveByte(unsigned char c) {
     case 7:
       value += c << 24;
       length = value;
-      position = 0x20010000;
+      position = PATCHMAINLOC;
       state++;
       break;
     default:
@@ -666,10 +875,10 @@ void PExReceiveByte(unsigned char c) {
           header = 0;
           state = 0;
           int bytes_written;
-          err = f_write(&pFile, (char *)0x20010000, length,
+          err = f_write(&pFile, (char *)PATCHMAINLOC, length,
                         (void *)&bytes_written);
           if (err != FR_OK) {
-            LogTextMessage("File write failed");
+            report_fatfs_error(err,0);
           }
           AckPending = 1;
         }
@@ -774,7 +983,90 @@ void PExReceiveByte(unsigned char c) {
       }
     }
   }
-  else {
+  else if (header == 'r') { // generic read
+    switch (state) {
+    case 4:
+      offset = c;
+      state++;
+      break;
+    case 5:
+      offset += c << 8;
+      state++;
+      break;
+    case 6:
+      offset += c << 16;
+      state++;
+      break;
+    case 7:
+      offset += c << 24;
+      state++;
+      break;
+    case 8:
+      value = c;
+      state++;
+      break;
+    case 9:
+      value += c << 8;
+      state++;
+      break;
+    case 10:
+      value += c << 16;
+      state++;
+      break;
+    case 11:
+      value += c << 24;
+
+      uint32_t read_repy_header[3];
+      ((char*)read_repy_header)[0] = 'A';
+      ((char*)read_repy_header)[1] = 'x';
+      ((char*)read_repy_header)[2] = 'o';
+      ((char*)read_repy_header)[3] = 'r';
+      read_repy_header[1] = offset;
+      read_repy_header[2] = value;
+      chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                              (const unsigned char* )(&read_repy_header[0]), 3 * 4);
+      chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                              (const unsigned char* )(offset), value);
+
+      AckPending = true;
+      header = 0;
+      state = 0;
+      break;
+    }
+  }
+  else if (header == 'y') { // generic read, 32bit
+    switch (state) {
+    case 4:
+      offset = c;
+      state++;
+      break;
+    case 5:
+      offset += c << 8;
+      state++;
+      break;
+    case 6:
+      offset += c << 16;
+      state++;
+      break;
+    case 7:
+      offset += c << 24;
+
+      uint32_t read_repy_header[3];
+      ((char*)read_repy_header)[0] = 'A';
+      ((char*)read_repy_header)[1] = 'x';
+      ((char*)read_repy_header)[2] = 'o';
+      ((char*)read_repy_header)[3] = 'y';
+      read_repy_header[1] = offset;
+      read_repy_header[2] = *((uint32_t*)offset);
+      chSequentialStreamWrite((BaseSequentialStream * )&BDU1,
+                              (const unsigned char* )(&read_repy_header[0]), 3 * 4);
+
+      AckPending = true;
+      header = 0;
+      state = 0;
+      break;
+    }
+  }  else {
     header = 0;
     state = 0;
   }
@@ -783,8 +1075,18 @@ void PExReceiveByte(unsigned char c) {
 void PExReceive(void) {
   if (!AckPending) {
     unsigned char received;
-    while (chnReadTimeout(&SDU1, &received, 1, TIME_IMMEDIATE)) {
+    while (chnReadTimeout(&BDU1, &received, 1, TIME_IMMEDIATE)) {
       PExReceiveByte(received);
     }
   }
 }
+
+/*
+ void USBDMidiPoll(void) {
+ uint8_t r[4];
+ while (chnReadTimeout(&MDU1, &r, 4, TIME_IMMEDIATE)) {
+ MidiInMsgHandler(MIDI_DEVICE_USB_DEVICE, (( r[0] & 0xF0) >> 4)+ 1, r[1], r[2], r[3]);
+ }
+ }
+ */
+

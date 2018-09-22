@@ -42,7 +42,7 @@ struct KeyValuePair *KvpsDisplay;
 struct KeyValuePair *ObjectKvpRoot;
 #define MAXOBJECTS 256
 struct KeyValuePair *ObjectKvps[MAXOBJECTS];
-#define MAXTMPMENUITEMS 16
+#define MAXTMPMENUITEMS 15
 KeyValuePair_s TmpMenuKvps[MAXTMPMENUITEMS];
 KeyValuePair_s ADCkvps[3];
 
@@ -297,7 +297,7 @@ void EnterMenuLoadFile(void) {
   char str[20] = "0:";
   strcat(str, F->keyname);
 
-  SDLoadPatch(str);
+  LoadPatch(str);
 }
 
 void EnterMenuLoad(void) {
@@ -325,8 +325,8 @@ void EnterMenuLoad(void) {
       }
       else {
         int l = strlen(fn);
-        if ((fn[l - 4] == '.') && (fn[l - 3] == 'b') && (fn[l - 2] == 'i')
-            && (fn[l - 1] == 'n')) {
+        if ((fn[l - 4] == '.') && (fn[l - 3] == 'B') && (fn[l - 2] == 'I')
+            && (fn[l - 1] == 'N')) {
           char *s;
           s = (char *)memp;
           strcpy(s, fn);
@@ -363,14 +363,23 @@ void EnterMenuFormat(void) {
 static void UIPollButtons(void);
 static void UIUpdateLCD(void);
 
-static WORKING_AREA(waThreadUI, 2048);
-static msg_t ThreadUI(void *arg) {
-  int refreshLCD=0;
-  while(1) {
+void AxolotiControlUpdate(void) {
+  static int refreshLCD=0;
     UIPollButtons();
     if (!(0x0F & refreshLCD++)) {
       UIUpdateLCD();
       LCD_display();
+    }
+}
+
+
+void (*pControlUpdate)(void) = AxolotiControlUpdate;
+
+static WORKING_AREA(waThreadUI, 2048);
+static msg_t ThreadUI(void *arg) {
+  while(1) {
+    if(pControlUpdate != 0L) {
+        pControlUpdate();
     }
     AxoboardADCConvert();
     PollMidiIn();
@@ -383,7 +392,17 @@ static msg_t ThreadUI(void *arg) {
 static void UIUpdateLCD(void);
 static void UIPollButtons2(void);
 
-static WORKING_AREA(waThreadUI, 1024);
+void AxolotiControlUpdate(void) {
+#if ((BOARD_AXOLOTI_V03)||(BOARD_AXOLOTI_V05))
+    do_axoloti_control();
+    UIPollButtons2();
+    UIUpdateLCD();
+#endif
+}
+
+void (*pControlUpdate)(void) = AxolotiControlUpdate;
+
+static WORKING_AREA(waThreadUI, 1172);
 static msg_t ThreadUI(void *arg) {
   (void)(arg);
 #if CH_USE_REGISTRY
@@ -393,12 +412,10 @@ static msg_t ThreadUI(void *arg) {
 //    AxoboardADCConvert();
     PExTransmit();
     PExReceive();
-#if ((BOARD_AXOLOTI_V03)||(BOARD_AXOLOTI_V05))
-    do_axoloti_control();
-    UIPollButtons2();
-    UIUpdateLCD();
-#endif
-    chThdSleepMilliseconds(10);
+    if(pControlUpdate != 0L) {
+        pControlUpdate();
+    }
+    chThdSleepMilliseconds(2);
   }
   return (msg_t)0;
 }

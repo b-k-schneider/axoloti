@@ -17,15 +17,13 @@
  */
 package axoloti.parameters;
 
-import axoloti.Modulation;
-import axoloti.Modulator;
 import org.simpleframework.xml.Attribute;
 
 /**
  *
  * @author Johannes Taelman
  */
-public class ParameterInstanceFrac32SMap extends ParameterInstanceFrac32UMap {
+public class ParameterInstanceFrac32SMap extends ParameterInstanceFrac32UMap<ParameterFrac32UMap> {
 
     public ParameterInstanceFrac32SMap() {
         super();
@@ -42,7 +40,7 @@ public class ParameterInstanceFrac32SMap extends ParameterInstanceFrac32UMap {
 
     @Override
     double getMax() {
-        return 63.0;
+        return 64.0;
     }
 
     @Override
@@ -68,30 +66,16 @@ public class ParameterInstanceFrac32SMap extends ParameterInstanceFrac32UMap {
             n = axoObj.getInstanceName() + ":" + name;
         }
         String s = PExName(vprefix) + ".pfunction = " + GetPFunction() + ";\n"
-                + PExName(vprefix) + ".pfunction(&" + PExName(vprefix) + ");\n"
                 + "  SetKVP_IPVP(&" + StructAccces + KVPName(vprefix) + ",ObjectKvpRoot, \"" + n + "\" ,"
                 + "&" + PExName(vprefix) + ","
-                + (((ParameterFrac32SMap) parameter).MinValue.getRaw()) + ","
-                + (((ParameterFrac32SMap) parameter).MaxValue.getRaw()) + ");\n"
+                + " -1<<27,"
+                + " 1<<27);\n"
                 + "  KVP_RegisterObject(&" + StructAccces + KVPName(vprefix) + ");\n";
-        if (modulators != null) {
-            for (Modulation m : modulators) {
-                Modulator mod = axoObj.patch.GetModulatorOfModulation(m);
-                if (mod == null) {
-                    System.out.println("modulator not found");
-                    continue;
-                }
-                int modulation_index = mod.Modulations.indexOf(m);
-                s += "  parent2->PExModulationSources[" + mod.getCName() + "][" + modulation_index + "].PEx = &" + PExName(vprefix) + ";\n";
-                s += "  parent2->PExModulationSources[" + mod.getCName() + "][" + modulation_index + "].amount = " + m.getValue().getRaw() + ";\n";
-                s += "  parent2->PExModulationSources[" + mod.getCName() + "][" + modulation_index + "].prod = 0;\n";
-            }
-        }
         return s;
     }
 
     @Override
     public String GenerateCodeMidiHandler(String vprefix) {
-        return GenerateMidiCCCodeSub(vprefix, "(data2-64)<<21");
+        return GenerateMidiCCCodeSub(vprefix, "(data2!=127)?(data2-64)<<21:0x07FFFFFF");
     }
 }

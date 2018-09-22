@@ -18,6 +18,7 @@
 
 #include "ch.h"
 #include "hal.h"
+#include "ff.h"
 #include "codec.h"
 #include "chprintf.h"
 #include "pconnection.h"
@@ -47,7 +48,11 @@ typedef enum {
   watchdog_soft,
   watchdog_hard,
   brownout,
-  goto_DFU
+  goto_DFU,
+  fatfs_error,
+  patch_load_crc_fail,
+  patch_load_sdram_overflow,
+  usbh_midi_ringbuffer_overflow
 } faulttype;
 
 typedef struct {
@@ -199,6 +204,29 @@ void exception_initiate_dfu(void) {
   NVIC_SystemReset();
 }
 
+const char * const fs_err_name[] = {
+  "FR_OK",
+  "FR_DISK_ERR",
+  "FR_INT_ERR",
+  "FR_NOT_READY",
+  "FR_NO_FILE",
+  "FR_NO_PATH",
+  "FR_INVALID_NAME",
+  "FR_DENIED",
+  "FR_EXIST",
+  "FR_INVALID_OBJECT",
+  "FR_WRITE_PROTECTED",
+  "FR_INVALID_DRIVE",
+  "FR_NOT_ENABLED",
+  "FR_NO_FILESYSTEM",
+  "FR_MKFS_ABORTED",
+  "FR_TIMEOUT",
+  "FR_LOCKED",
+  "FR_NOT_ENOUGH_CORE",
+  "FR_TOO_MANY_OPEN_FILES",
+  "FR_INVALID_PARAMETER"
+};
+
 void exception_checkandreport(void) {
   if (exception_check()) {
     bool report_registers = 0;
@@ -216,7 +244,20 @@ void exception_checkandreport(void) {
     else if (exceptiondump->type == brownout) {
       LogTextMessage("exception: brownout");
     }
-    else {
+    else if (exceptiondump->type == fatfs_error) {
+      LogTextMessage("file error: %s, filename:\"%s\"",fs_err_name[exceptiondump->r0],(char *)(BKPSRAM_BASE)+12);
+    }
+    else if (exceptiondump->type == patch_load_crc_fail) {
+      LogTextMessage("failed to load patch, firmware version mismatch? filename:\"%s\"",(char *)(BKPSRAM_BASE)+12);
+    }
+    else if (exceptiondump->type == patch_load_sdram_overflow) {
+      LogTextMessage("sdram overflow by %d bytes",exceptiondump->r0);
+    }
+    else if (exceptiondump->type == usbh_midi_ringbuffer_overflow) {
+      LogTextMessage("usb host midi output ringbuffer overflow");
+    }
+    else
+    {
       LogTextMessage("unknown exception?");
     }
 
@@ -239,6 +280,83 @@ void exception_checkandreport(void) {
     }
     exception_clear();
   }
+}
+
+void report_fatfs_error(int errno, const char *fn) {
+  if (exceptiondump->magicnumber == ERROR_MAGIC_NUMBER)
+    return;
+
+  char *p;
+  p = (char *)(BKPSRAM_BASE)+12;
+
+  if (fn!=0) {
+    if (*fn != '/') {
+      // prepend CWD
+      f_getcwd(p,40);
+      while(*p!=0) p++;
+      *p++ = '/';
+    }
+    int i = 20;
+    while(i-- && *fn){
+      *p++ = *fn++;
+    }
+  }
+  *p = 0;
+  exceptiondump->magicnumber = ERROR_MAGIC_NUMBER;
+  exceptiondump->type = fatfs_error;
+  exceptiondump->r0 = errno;
+}
+
+void report_patchLoadFail(const char *fn) {
+  if (exceptiondump->magicnumber == ERROR_MAGIC_NUMBER)
+    return;
+  exceptiondump->magicnumber = ERROR_MAGIC_NUMBER;
+  exceptiondump->type = patch_load_crc_fail;
+  char *p;
+  p = (char *)(BKPSRAM_BASE)+12;
+  if (fn!=0) {
+    if (*fn != '/') {
+      // prepend CWD
+      f_getcwd(p,40);
+      while(*p!=0) p++;
+      *p++ = '/';
+    }
+    int i = 20;
+    while(i-- && *fn){
+      *p++ = *fn++;
+    }
+  }
+  *p = 0;
+}
+
+void report_patchLoadSDRamOverflow(const char *fn, int amount) {
+  if (exceptiondump->magicnumber == ERROR_MAGIC_NUMBER)
+    return;
+  exceptiondump->magicnumber = ERROR_MAGIC_NUMBER;
+  exceptiondump->r0 = amount;
+  exceptiondump->type = patch_load_sdram_overflow;
+  char *p;
+  p = (char *)(BKPSRAM_BASE)+12;
+  if (fn!=0) {
+    if (*fn != '/') {
+      // prepend CWD
+      f_getcwd(p,40);
+      while(*p!=0) p++;
+      *p++ = '/';
+    }
+    int i = 20;
+    while(i-- && *fn){
+      *p++ = *fn++;
+    }
+  }
+  *p = 0;
+}
+
+void report_usbh_midi_ringbuffer_overflow(void) {
+  if (exceptiondump->magicnumber == ERROR_MAGIC_NUMBER)
+    return;
+  exceptiondump->magicnumber = ERROR_MAGIC_NUMBER;
+  exceptiondump->type = usbh_midi_ringbuffer_overflow;
 }
 
 void dbg_set_i(int i) {

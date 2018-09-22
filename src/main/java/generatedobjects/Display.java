@@ -17,6 +17,21 @@
  */
 package generatedobjects;
 
+import axoloti.displays.DisplayBool32;
+import axoloti.displays.DisplayFrac32SChart;
+import axoloti.displays.DisplayFrac32SDial;
+import axoloti.displays.DisplayFrac32UChart;
+import axoloti.displays.DisplayFrac32UDial;
+import axoloti.displays.DisplayFrac32VBar;
+import axoloti.displays.DisplayFrac32VU;
+import axoloti.displays.DisplayFrac4ByteVBar;
+import axoloti.displays.DisplayFrac8S128VBar;
+import axoloti.displays.DisplayFrac8U128VBar;
+import axoloti.displays.DisplayInt32Bar16;
+import axoloti.displays.DisplayInt32Bar32;
+import axoloti.displays.DisplayInt32HexLabel;
+import axoloti.displays.DisplayInt32Label;
+import axoloti.displays.DisplayNoteLabel;
 import axoloti.inlets.InletBool32;
 import axoloti.inlets.InletCharPtr32;
 import axoloti.inlets.InletFrac32;
@@ -30,20 +45,6 @@ import axoloti.object.AxoObject;
 import axoloti.object.AxoObjectAbstract;
 import axoloti.outlets.OutletInt32Pos;
 import axoloti.parameters.ParameterFrac32UMap;
-import displays.DisplayBool32;
-import displays.DisplayFrac32SChart;
-import displays.DisplayFrac32SDial;
-import displays.DisplayFrac32UChart;
-import displays.DisplayFrac32UDial;
-import displays.DisplayFrac32VBar;
-import displays.DisplayFrac32VU;
-import displays.DisplayFrac4ByteVBar;
-import displays.DisplayFrac8S128VBar;
-import displays.DisplayFrac8U128VBar;
-import displays.DisplayInt32Bar16;
-import displays.DisplayInt32Bar32;
-import displays.DisplayInt32HexLabel;
-import displays.DisplayInt32Label;
 import static generatedobjects.gentools.WriteAxoObject;
 import java.util.ArrayList;
 
@@ -82,6 +83,7 @@ public class Display extends gentools {
         WriteAxoObject(catName, CreateDisplayIBar64());
         WriteAxoObject(catName, CreateDisplayVU());
         WriteAxoObject(catName, CreateDisplayBool32());
+        WriteAxoObject(catName, CreateDisplayNote());
 
         {
             ArrayList<AxoObjectAbstract> c = new ArrayList<AxoObjectAbstract>();
@@ -104,10 +106,11 @@ public class Display extends gentools {
          p1.name = "timescale";
          o.params.add(p1);
          */
+        o.helpPatch = "kscope.axh";
         o.sLocalData = "   int32_t data[64];\n"
                 + "   int32_t index;\n"
                 + "   KeyValuePair kvp;\n"
-                + "const char NAME[] = \"%name%\";\n";
+                + "const char NAME[] = \"attr_name\";\n";
         o.sInitCode = "  index = 0;\n"
                 + "  kvp.kvptype = KVP_TYPE_CUSTOM;\n"
                 + "  kvp.keyname = %name%NAME;\n"
@@ -129,6 +132,7 @@ public class Display extends gentools {
         o.inlets.add(new InletFrac32("in", "input"));
         o.params.add(new ParameterFrac32UMap("timescale"));
 
+        o.helpPatch = "kscope.axh";
         o.sLocalData = "   int32_t data[128];\n"
                 + "   int32_t index;\n"
                 + "   int32_t vmin;\n"
@@ -177,7 +181,8 @@ public class Display extends gentools {
          p1.name = "timescale";
          o.params.add(p1);
          */
-        o.sLocalData = "   int32_t data[64];\n"
+       o.helpPatch = "scope.axh";
+       o.sLocalData = "   int32_t data[64];\n"
                 + "   int32_t index;\n"
                 + "   KeyValuePair kvp;\n"
                 + "const char NAME[] = \"%name%\";\n";
@@ -305,6 +310,7 @@ public class Display extends gentools {
             v.noLabel = true;
             o.displays.add(v);
         }
+        o.helpPatch = "scope.axh";
         o.setRotatedParams(true);
         o.sKRateCode = "if (!%hold%){\n"
                 + "int8_t t[16];\n"
@@ -326,6 +332,7 @@ public class Display extends gentools {
         o.inlets.add(new InletBool32("hold", "hold"));
         o.displays.add(new DisplayFrac8S128VBar("scope"));
         o.setRotatedParams(true);
+        o.helpPatch = "scope.axh";
         o.sLocalData = "int8_t t[" + n + "];\n"
                 + "int index;\n";
         o.sInitCode = "int i;\n"
@@ -351,6 +358,7 @@ public class Display extends gentools {
         o.inlets.add(new InletBool32("hold", "hold"));
         o.displays.add(new DisplayFrac8S128VBar("scope"));
         o.setRotatedParams(true);
+        o.helpPatch = "kscope.axh";
         o.sLocalData = "int8_t t[" + n + "];\n"
                 + "int index;\n";
         o.sInitCode = "int i;\n"
@@ -430,6 +438,7 @@ public class Display extends gentools {
 //            v.noLabel = true;
         //           o.displays.add(v);
         //       }
+        o.helpPatch = "scope.axh";
         o.setRotatedParams(true);
         o.sLocalData = "int8_t t[" + n + "];\n"
                 + "int index;\n"
@@ -475,6 +484,7 @@ public class Display extends gentools {
         o.inlets.add(new InletFrac32Pos("in", "input"));
         o.inlets.add(new InletBool32("hold", "hold"));
         o.displays.add(new DisplayFrac8U128VBar("scope"));
+        o.helpPatch = "kscope.axh";
         o.setRotatedParams(true);
         o.sLocalData = "int8_t t[" + n + "];\n"
                 + "int index;\n";
@@ -505,6 +515,7 @@ public class Display extends gentools {
         //           o.displays.add(v);
         //       }
         o.setRotatedParams(true);
+        o.helpPatch = "kscope.axh";
         o.sLocalData = "int8_t t[" + n + "];\n"
                 + "int index;\n"
                 + "int32_t pval;\n";
@@ -548,6 +559,7 @@ public class Display extends gentools {
 //            v.noLabel = true;
         //           o.displays.add(v);
         //       }
+        o.helpPatch = "kscope.axh";
         o.setRotatedParams(true);
         o.sLocalData = "int8_t t[" + n + "];\n"
                 + "int index;\n"
@@ -641,6 +653,15 @@ public class Display extends gentools {
         return o;
     }
 
+    static AxoObject CreateDisplayNote() {
+        AxoObject o = new AxoObject("note", "display note");
+        o.sAuthor = "Mark Harris";
+        o.inlets.add(new InletFrac32Bipolar("in", "input"));
+        o.displays.add(new DisplayNoteLabel("v"));
+        o.sKRateCode = "%v%=%in%;\n";
+        return o;
+    }
+    
     static AxoObject CreateDisplayVU() {
         AxoObject o = new AxoObject("vu", "cheap vu meter display");
         o.inlets.add(new InletFrac32Buffer("in", "input"));

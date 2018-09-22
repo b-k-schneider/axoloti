@@ -24,6 +24,7 @@
 #include "sdcard.h"
 #include <string.h>
 #include "chprintf.h"
+#include "exceptions.h"
 
 /*===========================================================================*/
 /* SDCard                                                                    */
@@ -141,7 +142,7 @@ static void RemoveHandler(eventid_t id) {
 }
 #endif
 
-void sdcardInit(void) {
+void sdcard_init(void) {
   /*
    static const evhandler_t evhndl[] = {
    InsertHandler,
@@ -178,33 +179,65 @@ void sdcardInit(void) {
   }
 }
 
-void sdAttemptMountIfUnmounted() {
+void sdcard_attemptMountIfUnmounted() {
   if (fs_ready)
     return;
   InsertHandler(0);
 }
 
+void sdcard_unmount(void){
+  RemoveHandler(0);
+}
+
 /* Generic large buffer.*/
 uint32_t fbuff[256] __attribute__ ((section (".sram2")));
 
-void SDLoadPatch(char *fname) {
+int sdcard_loadPatch1(char *fname) {
   FIL FileObject;
   FRESULT err;
   uint32_t bytes_read;
 
   StopPatch();
 
+//  LogTextMessage("load %s",fname);
+
+  // change working directory
+
+  int i=0;
+  for(i=strlen(fname);i;i--){
+    if (fname[i]=='/')
+      break;
+  }
+  if (i>0) {
+    fname[i]=0;
+//    LogTextMessage("chdir %s",fname);
+    err = f_chdir(fname);
+    if (err != FR_OK) {
+      report_fatfs_error(err,fname);
+      return -1;
+    }
+    fname = &fname[i+1];
+  } else {
+    f_chdir("/");
+  }
+
   err = f_open(&FileObject, fname, FA_READ | FA_OPEN_EXISTING);
   chThdSleepMilliseconds(10);
   if (err != FR_OK) {
-    return;
+	report_fatfs_error(err,fname);
+    return -1;
   }
   err = f_read(&FileObject, (uint8_t *)PATCHMAINLOC, 0xE000,
                (void *)&bytes_read);
   if (err != FR_OK) {
-    chSysHalt();
+    report_fatfs_error(err,fname);
+    return -1;
   }
   err = f_close(&FileObject);
+  if (err != FR_OK) {
+    report_fatfs_error(err,fname);
+    return -1;
+  }
   chThdSleepMilliseconds(10);
-  StartPatch();
+  return 0;
 }

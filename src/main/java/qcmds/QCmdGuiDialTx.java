@@ -17,8 +17,8 @@
  */
 package qcmds;
 
-import axoloti.parameters.ParameterInstance;
 import axoloti.Patch;
+import axoloti.parameters.ParameterInstance;
 
 /**
  *
@@ -28,16 +28,20 @@ public class QCmdGuiDialTx implements QCmdGUITask {
 
     @Override
     public void DoGUI(QCmdProcessor processor) {
-        if (processor.queue.isEmpty()) {
+        if (processor.isQueueEmpty()) {
             Patch patch = processor.getPatch();
             if (patch != null) {
                 for (ParameterInstance p : patch.getParameterInstances()) {
                     if (p.GetNeedsTransmit()) {
-                        processor.AppendToQueue(new QCmdSerialDialTX(p.TXData()));
-                        //processor.println("tx dial " + p.getName());
+                        if (processor.hasQueueSpaceLeft()) {
+                            processor.AppendToQueue(new QCmdSerialDialTX(p.TXData()));
+                           //processor.println("tx dial " + p.getName());
+                        } else {
+                            break;
+                        }
                     }
                 }
-                if (patch.presetUpdatePending) {
+                if (patch.presetUpdatePending && processor.hasQueueSpaceLeft()) {
                     byte pb[] = new byte[patch.getSettings().GetNPresets() * patch.getSettings().GetNPresetEntries() * 8];
                     int p = 0;
                     for (int i = 0; i < patch.getSettings().GetNPresets(); i++) {

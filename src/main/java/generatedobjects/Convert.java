@@ -45,7 +45,6 @@ public class Convert extends gentools {
         WriteAxoObject(catName, toFrac32());
         WriteAxoObject(catName, toBool32());
         WriteAxoObject(catName, toInt32());
-
     }
 
     static AxoObject Create_interp() {
@@ -74,7 +73,9 @@ public class Convert extends gentools {
         AxoObject o = new AxoObject("mtof", "Midi note number to frequency, equal tempered tuning, A=440Hz");
         o.outlets.add(new OutletFrac32("frequency", "frequency"));
         o.inlets.add(new InletFrac32("pitch", "chromatic note"));
-        o.sKRateCode = "  MTOF(%pitch%,%frequency%);\n";
+        o.sKRateCode = "int f1;\n"
+                + "MTOF(inlet_pitch,f1);\n"
+                + "outlet_frequency = f1>>4;\n";
         return o;
     }
 

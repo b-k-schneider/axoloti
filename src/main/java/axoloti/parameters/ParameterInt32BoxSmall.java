@@ -17,23 +17,25 @@
  */
 package axoloti.parameters;
 
-import axoloti.datatypes.Int32;
 import axoloti.datatypes.ValueInt32;
 import java.security.MessageDigest;
+import java.util.List;
 import org.simpleframework.xml.Element;
 
 /**
  *
  * @author Johannes Taelman
  */
-public class ParameterInt32BoxSmall extends Parameter<Int32> {
+public class ParameterInt32BoxSmall extends Parameter<ParameterInstanceInt32BoxSmall> {
 
     @Element
-    ValueInt32 MinValue;
+    public ValueInt32 MinValue;
     @Element
-    ValueInt32 MaxValue;
+    public ValueInt32 MaxValue;
 
     public ParameterInt32BoxSmall() {
+        this.MinValue = new ValueInt32(0);
+        this.MaxValue = new ValueInt32(0);
     }
 
     public ParameterInt32BoxSmall(String name, int MinValue, int MaxValue) {
@@ -43,7 +45,7 @@ public class ParameterInt32BoxSmall extends Parameter<Int32> {
     }
 
     @Override
-    public ParameterInstance InstanceFactory() {
+    public ParameterInstanceInt32BoxSmall InstanceFactory() {
         ParameterInstanceInt32BoxSmall b = new ParameterInstanceInt32BoxSmall();
         b.min = MinValue.getInt();
         b.max = MaxValue.getInt();
@@ -54,5 +56,20 @@ public class ParameterInt32BoxSmall extends Parameter<Int32> {
     public void updateSHA(MessageDigest md) {
         super.updateSHA(md);
         md.update("int32.dial.small".getBytes());
+    }
+
+    static public final String TypeName = "int32.mini";
+
+    @Override
+    public String getTypeName() {
+        return TypeName;
+    }
+
+    @Override
+    public List<String> getEditableFields() {
+        List l = super.getEditableFields();
+        l.add("MinValue");
+        l.add("MaxValue");
+        return l;
     }
 }

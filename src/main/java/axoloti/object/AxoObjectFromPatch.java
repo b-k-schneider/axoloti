@@ -21,12 +21,14 @@ import axoloti.MainFrame;
 import axoloti.Patch;
 import axoloti.PatchFrame;
 import axoloti.PatchGUI;
+import java.awt.Rectangle;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.simpleframework.xml.Serializer;
+import org.simpleframework.xml.convert.AnnotationStrategy;
 import org.simpleframework.xml.core.Persister;
+import org.simpleframework.xml.strategy.Strategy;
 
 /**
  *
@@ -39,7 +41,7 @@ public class AxoObjectFromPatch extends AxoObject {
     PatchFrame pf;
     File f;
 
-    AxoObjectFromPatch(File f) {
+    public AxoObjectFromPatch(File f) {
         this.f = f;
         Serializer serializer = new Persister();
         try {
@@ -59,9 +61,9 @@ public class AxoObjectFromPatch extends AxoObject {
     final public void UpdateObject() {
         AxoObject o;
         if (pg == null) {
-            o = p.GenerateAxoObj();
+            o = p.GenerateAxoObj(new AxoObject());
         } else {
-            o = pg.GenerateAxoObj();
+            o = pg.GenerateAxoObj(new AxoObject());
         }
         attributes = o.attributes;
         depends = o.depends;
@@ -80,18 +82,16 @@ public class AxoObjectFromPatch extends AxoObject {
         sLocalData = o.sLocalData;
         sMidiCode = o.sMidiCode;
         sSRateCode = o.sSRateCode;
-        if (instances != null) {
-            ArrayList<AxoObjectInstance> i2 = new ArrayList<AxoObjectInstance>(instances);
-            for (AxoObjectInstance i : i2) {
-                i.getPatch().ChangeObjectInstanceType(i, this);
-            }
-        }
+        helpPatch = o.helpPatch;
+
+        FireObjectModified(this);
     }
 
     @Override
-    public void OpenEditor() {
+    public void OpenEditor(Rectangle editorBounds, Integer editorActiveTabIndex) {
         if (pg == null) {
-            Serializer serializer = new Persister();
+            Strategy strategy = new AnnotationStrategy();
+            Serializer serializer = new Persister(strategy);
             try {
                 pg = serializer.read(PatchGUI.class, f);
                 pf = new PatchFrame((PatchGUI) pg, MainFrame.mainframe.getQcmdprocessor());
@@ -107,6 +107,7 @@ public class AxoObjectFromPatch extends AxoObject {
             pg.setFileNamePath(id);
             pg.PostContructor();
         }
+        pf.setState(java.awt.Frame.NORMAL);
         pf.setVisible(true);
     }
 

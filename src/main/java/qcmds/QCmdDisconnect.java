@@ -25,6 +25,9 @@ import axoloti.MainFrame;
  */
 public class QCmdDisconnect implements QCmdGUITask {
 
+    public QCmdDisconnect() {
+    }
+    
     @Override
     public String GetStartMessage() {
         return "Start disconnect";
@@ -32,12 +35,13 @@ public class QCmdDisconnect implements QCmdGUITask {
 
     @Override
     public String GetDoneMessage() {
+        MainFrame.mainframe.WarnedAboutFWCRCMismatch = false;
         return "Done disconnect";
     }
 
     @Override
     public void DoGUI(QCmdProcessor processor) {
-        processor.queue.clear();
+        processor.ClearQueue();
         processor.serialconnection.disconnect();
         MainFrame.mainframe.ShowDisconnect();
     }

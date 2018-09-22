@@ -17,16 +17,15 @@
  */
 package qcmds;
 
-import axoloti.SerialConnection;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import jssc.SerialPortException;
+import axoloti.Connection;
 
 /**
  *
  * @author Johannes Taelman
  */
 public class QCmdGetFileList implements QCmdSerialTask {
+
+    boolean done = true;
 
     @Override
     public String GetStartMessage() {
@@ -35,18 +34,26 @@ public class QCmdGetFileList implements QCmdSerialTask {
 
     @Override
     public String GetDoneMessage() {
-        return "";
+        if (done) {
+            return "Finished receiving sdcard file list";
+        } else {
+            return "Incomplete sdcard file list...";
+        }
     }
 
     @Override
-    public QCmd Do(SerialConnection serialConnection) {
-        serialConnection.ClearSync();
-        try {
-            serialConnection.TransmitGetFileList();
-            return this;
-        } catch (SerialPortException ex) {
-            Logger.getLogger(QCmdPing.class.getName()).log(Level.SEVERE, null, ex);
-            return new QCmdDisconnect();
+    public QCmd Do(Connection connection) {
+        connection.ClearSync();
+        connection.ClearReadSync();
+        connection.TransmitGetFileList();
+        int timeout = 0;
+        while (!connection.WaitReadSync()) {
+            timeout++;
+            if (timeout > 20) {
+                done = false;
+                break;
+            }
         }
+        return this;
     }
 }

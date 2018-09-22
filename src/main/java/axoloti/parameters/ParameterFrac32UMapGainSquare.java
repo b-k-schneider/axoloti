@@ -17,6 +17,7 @@
  */
 package axoloti.parameters;
 
+import axoloti.datatypes.ValueFrac32;
 import axoloti.realunits.NativeToReal;
 import axoloti.realunits.SquareDB;
 import axoloti.realunits.SquareRatio;
@@ -36,6 +37,10 @@ public class ParameterFrac32UMapGainSquare extends ParameterFrac32UMap {
         super(name);
     }
 
+    public ParameterFrac32UMapGainSquare(String name, ValueFrac32 DefaultValue) {
+        super(name, DefaultValue);
+    }
+
     @Override
     public ParameterInstanceFrac32UMap InstanceFactory() {
         ParameterInstanceFrac32UMap p = super.InstanceFactory();
@@ -51,4 +56,10 @@ public class ParameterFrac32UMapGainSquare extends ParameterFrac32UMap {
         md.update("square".getBytes());
     }
 
+    static public final String TypeName = "frac32.u.map.squaregain";
+
+    @Override
+    public String getTypeName() {
+        return TypeName;
+    }
 }

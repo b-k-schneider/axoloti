@@ -33,17 +33,24 @@ public class ParameterFrac32SMapVSlider extends ParameterFrac32 {
 
     public ParameterFrac32SMapVSlider() {
         MinValue = new ValueFrac32(0);
-        MaxValue = new ValueFrac32(63.5);
+        MaxValue = new ValueFrac32(64);
     }
 
     public ParameterFrac32SMapVSlider(String name) {
         super(name);
         MinValue = new ValueFrac32(0);
-        MaxValue = new ValueFrac32(63.5);
+        MaxValue = new ValueFrac32(64);
     }
 
     @Override
     public ParameterInstanceFrac32SMapVSlider InstanceFactory() {
         return new ParameterInstanceFrac32SMapVSlider();
+    }
+
+    static public final String TypeName = "frac32.s.mapvsl";
+
+    @Override
+    public String getTypeName() {
+        return TypeName;
     }
 }

@@ -19,6 +19,7 @@ package qcmds;
 
 import axoloti.MainFrame;
 import axoloti.utils.OSDetect;
+import java.io.File;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -36,17 +37,23 @@ public class QCmdCompileFirmware extends QCmdShellTask {
     @Override
     public String GetDoneMessage() {
         MainFrame.mainframe.updateLinkFirmwareID();
+        MainFrame.mainframe.WarnedAboutFWCRCMismatch = false;
         return "Done compiling firmware";
     }
-
+    
+    @Override
+    public File GetWorkingDir() {
+        return new File(FirmwareDir());
+    }
+    
     @Override
     String GetExec() {
         if (OSDetect.getOS() == OSDetect.OS.WIN) {
-            return "platform_win/compile_firmware.bat";
+            return FirmwareDir()+"/compile_firmware_win.bat";
         } else if (OSDetect.getOS() == OSDetect.OS.MAC) {
-            return "/bin/sh platform_osx/compile_firmware.sh";
+            return "/bin/sh ./compile_firmware_osx.sh";
         } else if (OSDetect.getOS() == OSDetect.OS.LINUX) {
-            return "/bin/sh platform_linux/compile_firmware.sh";
+            return "/bin/sh ./compile_firmware_linux.sh";
         } else {
             Logger.getLogger(QCmdCompileFirmware.class.getName()).log(Level.SEVERE, "UPLOAD: OS UNKNOWN!");
             return null;

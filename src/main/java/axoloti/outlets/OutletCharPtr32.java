@@ -17,8 +17,8 @@
  */
 package axoloti.outlets;
 
-import axoloti.datatypes.DataType;
 import axoloti.datatypes.CharPtr32;
+import axoloti.datatypes.DataType;
 
 /**
  *
@@ -37,5 +37,12 @@ public class OutletCharPtr32 extends Outlet {
     @Override
     public DataType getDatatype() {
         return CharPtr32.d;
+    }
+
+    static public final String TypeName = "charptr32";
+
+    @Override
+    public String getTypeName() {
+        return TypeName;
     }
 }

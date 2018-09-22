@@ -74,7 +74,7 @@ extern "C" {
    * @brief  FMC SDRAM CAS Latency
    */
   /* #define SDRAM_CAS_LATENCY   FMC_CAS_Latency_2  */
-#define SDRAM_CAS_LATENCY    FMC_CAS_Latency_3
+#define SDRAM_CAS_LATENCY    FMC_CAS_Latency_2
 
   /**
    * @brief  FMC SDRAM Memory clock period
@@ -85,8 +85,8 @@ extern "C" {
   /**
    * @brief  FMC SDRAM Memory Read Burst feature
    */
-#define SDRAM_READBURST    FMC_Read_Burst_Disable    /* Default configuration used with LCD */
-  /* #define SDRAM_READBURST    FMC_Read_Burst_Enable  */
+#define SDRAM_READBURST    FMC_Read_Burst_Enable
+/*#define SDRAM_READBURST    FMC_Read_Burst_Disable*/    /* Default configuration used with LCD */
 
   /**
    * @brief  FMC SDRAM Mode definition register defines

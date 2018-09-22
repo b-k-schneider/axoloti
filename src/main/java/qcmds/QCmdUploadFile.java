@@ -17,12 +17,13 @@
  */
 package qcmds;
 
-import axoloti.SerialConnection;
+import axoloti.Connection;
+import axoloti.SDCardInfo;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import jssc.SerialPortException;
+import java.io.InputStream;
+import java.util.Calendar;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -32,39 +33,80 @@ import java.util.logging.Logger;
  */
 public class QCmdUploadFile implements QCmdSerialTask {
 
-    File f;
-    String filename;
+    InputStream inputStream;
+    final String filename;
+    final Calendar cal;
+    File file;
+    long size;
+    long tsEpoch;
+    boolean success = false;
 
-    public QCmdUploadFile(File f, String filename) {
-        this.f = f;
+    public QCmdUploadFile(InputStream inputStream, String filename) {
+        this.inputStream = inputStream;
         this.filename = filename;
+        this.cal = null;
+    }
+
+    public QCmdUploadFile(File file, String filename) {
+        this.file = file;
+        this.filename = filename;
+        inputStream = null;
+        this.cal = null;
+    }
+
+    public QCmdUploadFile(File file, String filename, Calendar cal) {
+        this.file = file;
+        this.filename = filename;
+        inputStream = null;
+        this.cal = cal;
     }
 
     @Override
     public String GetStartMessage() {
-        try {
-            return "Start uploading file " + f.getCanonicalPath() + " to sdcard : " + filename;
-        } catch (IOException ex) {
-            Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.SEVERE, null, ex);
-            return "";
-        }
+        return "Start uploading file to sdcard : " + filename;
     }
 
     @Override
     public String GetDoneMessage() {
-        return "Done uploading file";
+        if (success) {
+            return "Done uploading file";
+        } else {
+            return "Failed uploading file";
+        }
     }
 
     @Override
-    public QCmd Do(SerialConnection serialConnection) {
-        serialConnection.ClearSync();
+    public QCmd Do(Connection connection) {
+        connection.ClearSync();
         try {
-            Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.INFO, "uploading: " + f.getAbsolutePath());
-            int tlength = (int) f.length();
-            serialConnection.TransmitCreateFile(filename, tlength);
-            FileInputStream inputStream = new FileInputStream(f);
+            if (inputStream == null) {
+                if (!file.isFile()) {
+                    Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.INFO, "file does not exist: {0}", filename);
+                    success = false;
+                    return this;
+                }
+                if (!file.canRead()) {
+                    Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.INFO, "can''t read file: {0}", filename);
+                    success = false;
+                    return this;
+                }
+                inputStream = new FileInputStream(file);
+            }
+            Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.INFO, "uploading: {0}", filename);
+            Calendar ts;
+            if (cal != null) {
+                ts = cal;
+            } else if (file != null) {
+                ts = Calendar.getInstance();
+                ts.setTimeInMillis(file.lastModified());
+            } else {
+                ts = Calendar.getInstance();
+            }
+            int tlength = inputStream.available();
+            int remLength = inputStream.available();
+            size = tlength;
+            connection.TransmitCreateFile(filename, tlength, ts);
             int MaxBlockSize = 32768;
-            int remLength = tlength;
             int pct = 0;
             do {
                 int l;
@@ -78,27 +120,28 @@ public class QCmdUploadFile implements QCmdSerialTask {
                 byte[] buffer = new byte[l];
                 int nRead = inputStream.read(buffer, 0, l);
                 if (nRead != l) {
-                    Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.SEVERE, "file size wrong?" + nRead);
+                    Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.SEVERE, "file size wrong?{0}", nRead);
                 }
-                serialConnection.TransmitAppendFile(buffer);
+                connection.TransmitAppendFile(buffer);
                 int newpct = (100 * (tlength - remLength) / tlength);
                 if (newpct != pct) {
-                    Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.INFO, "uploading : " + newpct + "%");
+                    Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.INFO, "uploading : {0}%", newpct);
                 }
                 pct = newpct;
+                remLength = inputStream.available();
             } while (remLength > 0);
 
             inputStream.close();
-            serialConnection.TransmitCloseFile();
+            connection.TransmitCloseFile();
+
+            SDCardInfo.getInstance().AddFile(filename, (int) size, ts);
+            success = true;
             return this;
-        } catch (FileNotFoundException ex) {
-            Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.SEVERE, "FileNotFoundException", ex);
         } catch (IOException ex) {
             Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.SEVERE, "IOException", ex);
-        } catch (SerialPortException ex) {
-            Logger.getLogger(QCmdUploadFile.class.getName()).log(Level.SEVERE, "SerialPortException", ex);
         }
-        return new QCmdDisconnect();
+        success = false;
+        return this;
     }
 
 }

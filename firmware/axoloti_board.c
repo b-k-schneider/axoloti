@@ -20,61 +20,20 @@
 #include "axoloti_defines.h"
 #include "axoloti_board.h"
 
-void BlinkenLights(void) {
-  // LEDS
-  palSetPadMode(GPIOE, 9, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPadMode(GPIOE, 11, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPadMode(GPIOE, 13, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPadMode(GPIOE, 14, PAL_MODE_OUTPUT_PUSHPULL);
-  int k;
-  for (k = 0; k < 1; k++) {
-    palSetPad(GPIOE, 9);
-    chThdSleepMilliseconds(50);
-    palClearPad(GPIOE, 9);
-    palSetPad(GPIOE, 11);
-    chThdSleepMilliseconds(50);
-    palClearPad(GPIOE, 11);
-    palSetPad(GPIOE, 13);
-    chThdSleepMilliseconds(50);
-    palClearPad(GPIOE, 13);
-    palSetPad(GPIOE, 14);
-    chThdSleepMilliseconds(50);
-    palClearPad(GPIOE, 14);
-  }
-  palClearPad(GPIOE, 9);
-  palClearPad(GPIOE, 11);
-  palClearPad(GPIOE, 13);
-  palClearPad(GPIOE, 14);
-}
+//#define ENABLE_SERIAL_DEBUG 1
 
 Mutex Mutex_DMAStream_1_7; // shared: SPI3 (axoloti control) and I2C2 (codec)
 
 void axoloti_board_init(void) {
+
+#ifdef BOARD_AXOLOTI_V05
+  // initialize DMA2D engine
+  RCC->AHB1ENR |= RCC_AHB1ENR_DMA2DEN;
+  RCC->AHB1RSTR |= RCC_AHB1RSTR_DMA2DRST;
+  RCC->AHB1RSTR &= ~RCC_AHB1RSTR_DMA2DRST;
+#endif
+
   chMtxInit(&Mutex_DMAStream_1_7);
-}
-
-/*
- * PWM configuration structure.
- * Cyclic callback enabled, channels 1 and 4 enabled without callbacks,
- * the active state is a logic one.
- */
-static const PWMConfig pwmcfg = {400000, /* 400kHz PWM clock frequency.  */
-                                 4096, /* PWM period is 128 cycles.    */
-                                 NULL, { {PWM_OUTPUT_ACTIVE_HIGH, NULL}, {
-                                     PWM_OUTPUT_ACTIVE_HIGH, NULL},
-                                        {PWM_OUTPUT_ACTIVE_HIGH, NULL}, {
-                                            PWM_OUTPUT_ACTIVE_HIGH, NULL}},
-                                 /* HW dependent part.*/
-                                 0};
-
-void InitPWM(void) {
-  /*
-   * Initializes the PWM drivers
-   */
-  pwmStart(&PWMD3, &pwmcfg);
-  pwmStart(&PWMD4, &pwmcfg);
-  pwmStart(&PWMD5, &pwmcfg);
-//  pwmStart(&PWMD8, &pwmcfg);
 }
 
 /* Total number of channels to be sampled by a single ADC operation.*/
@@ -86,15 +45,17 @@ void InitPWM(void) {
 void adc_init(void) {
   adc_configpads();
   adcStart(&ADCD1, NULL);
+  adcSTM32EnableTSVREFE();
 }
 
 void adc_configpads(void) {
 #if ((BOARD_AXOLOTI_V03)||(BOARD_AXOLOTI_V05))
   palSetPadMode(GPIOA, 0, PAL_MODE_INPUT_ANALOG);
   palSetPadMode(GPIOA, 1, PAL_MODE_INPUT_ANALOG);
+#ifndef ENABLE_SERIAL_DEBUG
   palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);
   palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);
-
+#endif
   palSetPadMode(GPIOA, 4, PAL_MODE_INPUT_ANALOG);
   palSetPadMode(GPIOA, 5, PAL_MODE_INPUT_ANALOG);
   palSetPadMode(GPIOA, 6, PAL_MODE_INPUT_ANALOG);
@@ -113,8 +74,10 @@ void adc_configpads(void) {
 
   palSetPadMode(GPIOA, 0, PAL_MODE_INPUT_ANALOG);
   palSetPadMode(GPIOA, 1, PAL_MODE_INPUT_ANALOG);
+#ifdef ENABLE_SERIAL_DEBUG
   palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);
   palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);
+#endif
   // skip GPIOA4: LRCLK
   // skip GPIOA5,GPIOA6,GPIOA7: accelerometer
   palSetPadMode(GPIOB, 0, PAL_MODE_INPUT_ANALOG);
@@ -149,14 +112,15 @@ static const ADCConversionGroup adcgrpcfg1 = {FALSE,      //circular buffer mode
     ADC_CR2_SWSTART, /* CR2 */
     ADC_SMPR1_SMP_AN10(ADC_SAMPLE_84) | ADC_SMPR1_SMP_AN11(ADC_SAMPLE_84)
         | ADC_SMPR1_SMP_AN12(ADC_SAMPLE_84) | ADC_SMPR1_SMP_AN13(ADC_SAMPLE_84)
-        | ADC_SMPR1_SMP_AN14(ADC_SAMPLE_84) | ADC_SMPR1_SMP_AN15(ADC_SAMPLE_84), //sample times ch10-18
+        | ADC_SMPR1_SMP_AN14(ADC_SAMPLE_84) | ADC_SMPR1_SMP_AN15(ADC_SAMPLE_84)
+        | ADC_SMPR1_SMP_SENSOR(ADC_SAMPLE_144) | ADC_SMPR1_SMP_VREF(ADC_SAMPLE_144), //sample times ch10-18
     ADC_SMPR2_SMP_AN0(ADC_SAMPLE_84) | ADC_SMPR2_SMP_AN1(ADC_SAMPLE_84)
         | ADC_SMPR2_SMP_AN2(ADC_SAMPLE_84) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_84)
         | ADC_SMPR2_SMP_AN4(ADC_SAMPLE_84) | ADC_SMPR2_SMP_AN5(ADC_SAMPLE_84)
         | ADC_SMPR2_SMP_AN6(ADC_SAMPLE_84) | ADC_SMPR2_SMP_AN7(ADC_SAMPLE_84)
         | ADC_SMPR2_SMP_AN8(ADC_SAMPLE_84) | ADC_SMPR2_SMP_AN9(ADC_SAMPLE_84), //sample times ch0-9
     ADC_SQR1_SQ13_N(ADC_CHANNEL_IN12) | ADC_SQR1_SQ14_N(ADC_CHANNEL_IN13)
-        | ADC_SQR1_SQ15_N(ADC_CHANNEL_IN14) | ADC_SQR1_SQ16_N(ADC_CHANNEL_IN15)
+        | ADC_SQR1_SQ15_N(ADC_CHANNEL_IN14) | ADC_SQR1_SQ16_N(ADC_CHANNEL_VREFINT)
         | ADC_SQR1_NUM_CH(ADC_GRP1_NUM_CHANNELS), //SQR1: Conversion group sequence 13...16 + sequence length
     ADC_SQR2_SQ7_N(ADC_CHANNEL_IN6) | ADC_SQR2_SQ8_N(ADC_CHANNEL_IN7)
         | ADC_SQR2_SQ9_N(ADC_CHANNEL_IN8) | ADC_SQR2_SQ10_N(ADC_CHANNEL_IN9)

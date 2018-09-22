@@ -27,4 +27,9 @@ void watchdog_enable(void);
 void exception_check_DFU(void);
 void exception_initiate_dfu(void);
 void watchdog_feed(void);
+
+void report_fatfs_error(int errno, const char *fn);
+void report_patchLoadFail(const char *fn);
+void report_patchLoadSDRamOverflow(const char *fn, int amount);
+void report_usbh_midi_ringbuffer_overflow(void);
 #endif

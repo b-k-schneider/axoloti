@@ -17,10 +17,10 @@
  */
 package qcmds;
 
-import axoloti.SerialConnection;
+import axoloti.Connection;
+import axoloti.Patch;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import jssc.SerialPortException;
 
 /**
  *
@@ -28,9 +28,17 @@ import jssc.SerialPortException;
  */
 public class QCmdStart implements QCmdSerialTask {
 
+    Patch p;
+
+    static int patch_start_timeout = 10000; //msec
+
+    public QCmdStart(Patch p) {
+        this.p = p;
+    }
+
     @Override
     public String GetStartMessage() {
-        return "Start starting patch";
+        return "Starting patch...";
     }
 
     @Override
@@ -38,18 +46,21 @@ public class QCmdStart implements QCmdSerialTask {
         return "Done starting patch";
     }
 
+    public String GetTimeOutMessage() {
+        return "patch start taking too long, disconnecting";
+    }
+
     @Override
-    public QCmd Do(SerialConnection serialConnection) {
-        serialConnection.ClearSync();
-        try {
-            serialConnection.TransmitStart();
-            if (serialConnection.WaitSync()) {
-                return this;
-            } else {
-                return new QCmdDisconnect();
-            }
-        } catch (SerialPortException ex) {
-            Logger.getLogger(QCmdPing.class.getName()).log(Level.SEVERE, null, ex);
+    public QCmd Do(Connection connection) {
+        connection.ClearSync();
+
+        connection.setPatch(p);
+
+        connection.TransmitStart();
+        if (connection.WaitSync(patch_start_timeout)) {
+            return this;
+        } else {
+            Logger.getLogger(getClass().getName()).log(Level.SEVERE, GetTimeOutMessage());
             return new QCmdDisconnect();
         }
     }

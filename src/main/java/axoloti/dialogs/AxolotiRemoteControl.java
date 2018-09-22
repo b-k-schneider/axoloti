@@ -17,11 +17,15 @@
  */
 package axoloti.dialogs;
 
+import axoloti.ConnectionStatusListener;
 import axoloti.MainFrame;
+import axoloti.USBBulkConnection;
 import components.RControlButtonWithLed;
 import components.RControlColorLed;
 import components.RControlEncoder;
+import java.awt.Component;
 import java.awt.FlowLayout;
+import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
@@ -32,6 +36,7 @@ import java.awt.image.DataBufferByte;
 import java.nio.ByteBuffer;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
+import javax.swing.SwingUtilities;
 import qcmds.QCmdProcessor;
 import qcmds.QCmdVirtualButton;
 
@@ -39,16 +44,27 @@ import qcmds.QCmdVirtualButton;
  *
  * @author Johannes Taelman
  */
-public class AxolotiRemoteControl extends javax.swing.JFrame {
+public class AxolotiRemoteControl extends javax.swing.JFrame implements ConnectionStatusListener {
 
     /**
      * Creates new form AxolotiRemoteControl
      */
     public AxolotiRemoteControl() {
         initComponents();
+        USBBulkConnection.GetConnection().addConnectionStatusListener(this);
         setIconImage(new ImageIcon(getClass().getResource("/resources/axoloti_icon.png")).getImage());
         jPanelLCD.setLayout(new FlowLayout());
-        ImageIcon ii = new ImageIcon(bImageScaled);
+        ImageIcon ii = new ImageIcon(bImageScaled) {
+            @Override
+            public synchronized void paintIcon(Component c, Graphics g, int x, int y) {
+                if (dirty) {
+                    dirty = false;
+                    g2d.drawImage(bImage, 0, 0, 256, 128, null);
+                }
+                super.paintIcon(c, g, x, y); //To change body of generated methods, choose Tools | Templates.
+            }
+
+        };
         jPanelLCD.add(new JLabel(ii));
         jPanelLCD.doLayout();
         jPanelLCD.setVisible(true);
@@ -133,6 +149,28 @@ public class AxolotiRemoteControl extends javax.swing.JFrame {
         jButtonUp.setFocusable(false);
         jButtoneEnter.setFocusable(false);
         jButtonShift.setFocusable(false);
+    }
+
+    @Override
+    public void ShowConnect() {
+        jButtonCancel.setEnabled(true);
+        jButtonDown.setEnabled(true);
+        jButtonLeft.setEnabled(true);
+        jButtonRight.setEnabled(true);
+        jButtonUp.setEnabled(true);
+        jButtoneEnter.setEnabled(true);
+        jButtonShift.setEnabled(true);
+    }
+
+    @Override
+    public void ShowDisconnect() {
+        jButtonCancel.setEnabled(false);
+        jButtonDown.setEnabled(false);
+        jButtonLeft.setEnabled(false);
+        jButtonRight.setEnabled(false);
+        jButtonUp.setEnabled(false);
+        jButtoneEnter.setEnabled(false);
+        jButtonShift.setEnabled(false);
     }
 
     class MouseListerTxer implements MouseListener {
@@ -447,35 +485,46 @@ public class AxolotiRemoteControl extends javax.swing.JFrame {
     private javax.swing.JPanel jPanelNav;
     private javax.swing.JPanel jPanelRight;
     // End of variables declaration//GEN-END:variables
-    private BufferedImage bImage = new BufferedImage(128, 64, BufferedImage.TYPE_BYTE_BINARY);
-    private BufferedImage bImageScaled = new BufferedImage(256, 128, BufferedImage.TYPE_BYTE_BINARY);
-    private Graphics2D g2d = (Graphics2D) bImageScaled.createGraphics();
+    private final BufferedImage bImage = new BufferedImage(128, 64, BufferedImage.TYPE_BYTE_BINARY);
+    private final BufferedImage bImageScaled = new BufferedImage(256, 128, BufferedImage.TYPE_BYTE_BINARY);
+    private final Graphics2D g2d = (Graphics2D) bImageScaled.createGraphics();
 
-    public void updateRow(int LCDPacketRow, ByteBuffer lcdRcvBuffer) {
-        if (LCDPacketRow < 8) {
-            byte[] pixels = ((DataBufferByte) bImage.getRaster().getDataBuffer()).getData();
-            for (int i = 0; i < (128); i++) {
-                //int j = 1<<(i%8);
-                int k = i - (i % 8);
-                int y = i / 16;
-                int j = 1 << y;
-                int x = 8 * (i % 16);
-                pixels[i + (LCDPacketRow * 128)] = (byte) ((((lcdRcvBuffer.get(x) & j) > 0) ? 0 : 128)
-                        + (((lcdRcvBuffer.get(x + 1) & j) > 0) ? 0 : 64)
-                        + (((lcdRcvBuffer.get(x + 2) & j) > 0) ? 0 : 32)
-                        + (((lcdRcvBuffer.get(x + 3) & j) > 0) ? 0 : 16)
-                        + (((lcdRcvBuffer.get(x + 4) & j) > 0) ? 0 : 8)
-                        + (((lcdRcvBuffer.get(x + 5) & j) > 0) ? 0 : 4)
-                        + (((lcdRcvBuffer.get(x + 6) & j) > 0) ? 0 : 2)
-                        + (((lcdRcvBuffer.get(x + 7) & j) > 0) ? 0 : 1));
-            }
-            g2d.drawImage(bImage, 0, 0, 256, 128, null);
-            jPanelLCD.repaint();
-        } else {
-            // row 8 is for all the leds
-            for (int i = 0; i < 16; i++) {
-                buttonsWithLeds[i].setIlluminated(lcdRcvBuffer.get(i) != 0);
-            }
+    boolean dirty = false;
+
+    public void updateRow(final int LCDPacketRow, final ByteBuffer lcdRcvBuffer) {
+        if (false) {
+            SwingUtilities.invokeLater(new Runnable() {
+                @Override
+                public void run() {
+                    if (LCDPacketRow < 8) {
+
+                        byte[] pixels = ((DataBufferByte) bImage.getRaster().getDataBuffer()).getData();
+                        for (int i = 0; i < (128); i++) {
+                            //int j = 1<<(i%8);
+                            int k = i - (i % 8);
+                            int y = i / 16;
+                            int j = 1 << y;
+                            int x = 8 * (i % 16);
+                            pixels[i + (LCDPacketRow * 128)] = (byte) ((((lcdRcvBuffer.get(x) & j) > 0) ? 0 : 128)
+                                    + (((lcdRcvBuffer.get(x + 1) & j) > 0) ? 0 : 64)
+                                    + (((lcdRcvBuffer.get(x + 2) & j) > 0) ? 0 : 32)
+                                    + (((lcdRcvBuffer.get(x + 3) & j) > 0) ? 0 : 16)
+                                    + (((lcdRcvBuffer.get(x + 4) & j) > 0) ? 0 : 8)
+                                    + (((lcdRcvBuffer.get(x + 5) & j) > 0) ? 0 : 4)
+                                    + (((lcdRcvBuffer.get(x + 6) & j) > 0) ? 0 : 2)
+                                    + (((lcdRcvBuffer.get(x + 7) & j) > 0) ? 0 : 1));
+                        }
+                        dirty = true;
+                        jPanelLCD.repaint(10);
+
+                    } else {
+                        // row 8 is for all the leds
+                        for (int i = 0; i < 16; i++) {
+                            buttonsWithLeds[i].setIlluminated(lcdRcvBuffer.get(i) != 0);
+                        }
+                    }
+                }
+            });
         }
     }
 }

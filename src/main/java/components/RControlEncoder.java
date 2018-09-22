@@ -18,11 +18,14 @@
 package components;
 
 import axoloti.MainFrame;
+import axoloti.Theme;
+import axoloti.utils.Preferences;
+import components.control.DialComponent;
 import java.awt.AWTException;
-import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.MouseInfo;
 import java.awt.RenderingHints;
 import java.awt.Robot;
 import java.awt.event.MouseEvent;
@@ -45,6 +48,15 @@ public abstract class RControlEncoder extends JComponent {
     Robot robot;
 
     public RControlEncoder() {
+        try {
+            if (Preferences.LoadPreferences().getMouseDoNotRecenterWhenAdjustingControls()) {
+                robot = null;
+            } else {
+                robot = new Robot(MouseInfo.getPointerInfo().getDevice());
+            }
+        } catch (AWTException ex) {
+            Logger.getLogger(DialComponent.class.getName()).log(Level.SEVERE, null, ex);
+        }
         addMouseListener(new MouseListener() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -61,6 +73,7 @@ public abstract class RControlEncoder extends JComponent {
             @Override
             public void mouseReleased(MouseEvent e) {
                 getRootPane().setCursor(Cursor.getDefaultCursor());
+                robot = null;
             }
 
             @Override
@@ -77,17 +90,14 @@ public abstract class RControlEncoder extends JComponent {
             public void mouseDragged(MouseEvent e) {
                 if ((MousePressedBtn == MouseEvent.BUTTON1)) {
                     int v;
-                    getRootPane().setCursor(MainFrame.transparentCursor);
                     v = (MousePressedCoordY - e.getYOnScreen());
                     if (Math.abs(v) > 2) {
-                        if (robot == null) {
-                            try {
-                                robot = new Robot();
-                            } catch (AWTException ex) {
-                                Logger.getLogger(RControlEncoder.class.getName()).log(Level.SEVERE, null, ex);
-                            }
+                        if (robot != null) {
+                            getRootPane().setCursor(MainFrame.transparentCursor);
+                            robot.mouseMove(MousePressedCoordX, MousePressedCoordY);
+                        } else {
+                            MousePressedCoordY = e.getYOnScreen();
                         }
-                        robot.mouseMove(MousePressedCoordX, MousePressedCoordY);
                         DoRotation1(v / 2);
                     }
                 }
@@ -124,9 +134,9 @@ public abstract class RControlEncoder extends JComponent {
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setPaint(getBackground());
+        g2.setPaint(Theme.getCurrentTheme().Object_Default_Background);
         g2.fillRect(0, 0, width, height);
-        g2.setPaint(Color.BLACK);
+        g2.setPaint(Theme.getCurrentTheme().Component_Primary);
         g2.drawOval(hoffset, voffset, diameter, diameter);
 
         g2.fillOval(hoffset + diameter / 4, voffset + diameter / 4, diameter / 2, diameter / 2);

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2013, 2014 Johannes Taelman
+ * Copyright (C) 2013 - 2016 Johannes Taelman
  *
  * This file is part of Axoloti.
  *
@@ -17,9 +17,14 @@
  */
 package axoloti.attribute;
 
+import axoloti.SDFileReference;
+import axoloti.Theme;
+import axoloti.atom.AtomInstance;
 import axoloti.attributedefinition.AxoAttribute;
 import axoloti.object.AxoObjectInstance;
+import static axoloti.utils.CharEscape.CharEscape;
 import components.LabelComponent;
+import java.util.ArrayList;
 import javax.swing.BoxLayout;
 import javax.swing.JPanel;
 import org.simpleframework.xml.Attribute;
@@ -28,32 +33,37 @@ import org.simpleframework.xml.Attribute;
  *
  * @author Johannes Taelman
  */
-public abstract class AttributeInstance extends JPanel {
+public abstract class AttributeInstance<T extends AxoAttribute> extends JPanel implements AtomInstance<T> {
 
     @Attribute
-    public String attributeName;
-    public AxoAttribute attr;
-    public AxoObjectInstance axoObj;
+    String attributeName;
+
+    T attr;
+
+    AxoObjectInstance axoObj;
     LabelComponent lbl;
 
     public AttributeInstance() {
     }
 
-    public AttributeInstance(AxoAttribute param, AxoObjectInstance axoObj1) {
-        attr = param;
+    public AttributeInstance(T attr, AxoObjectInstance axoObj1) {
+        this.attr = attr;
         axoObj = axoObj1;
         attributeName = attr.getName();
     }
 
     public void PostConstructor() {
         setLayout(new BoxLayout(this, BoxLayout.LINE_AXIS));
-        add(new LabelComponent(attr.getName()));
-        doLayout();
+        setBackground(Theme.getCurrentTheme().Object_Default_Background);
+        add(new LabelComponent(GetDefinition().getName()));
         setSize(getPreferredSize());
-        doLayout();
+        if (attr.getDescription() != null) {
+            setToolTipText(attr.getDescription());
+        }
     }
 
-    public String getAttributeName() {
+    @Override
+    public String getName() {
         return attributeName;
     }
 
@@ -64,4 +74,32 @@ public abstract class AttributeInstance extends JPanel {
     public abstract String CValue();
 
     public abstract void CopyValueFrom(AttributeInstance a1);
+
+    public String GetCName() {
+        return "attr_" + CharEscape(attributeName);
+    }
+
+    @Override
+    public AxoObjectInstance GetObjectInstance() {
+        return axoObj;
+    }
+
+    @Override
+    public T GetDefinition() {
+        return attr;
+    }
+
+    public ArrayList<SDFileReference> GetDependendSDFiles() {
+        return null;
+    }
+
+    public void Close() {
+    }
+
+    void SetDirty() {
+        // propagate dirty flag to patch if there is one
+        if (axoObj.getPatch() != null) {
+            axoObj.getPatch().SetDirty();
+        }
+    }
 }
